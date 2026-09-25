@@ -21,6 +21,27 @@ cartella, indipendentemente dal dispositivo che li ha creati.
 - Windows
 - Python 3 (solo per eseguire dal sorgente)
 
+### Avvio dal sorgente
+```bash
+pip install -r requirements.txt
+python EXIName.py
+```
+
+### Creazione dell'eseguibile
+Esegui `build_exe.bat`: lo script controlla che Python sia installato, pulisce
+le build precedenti, installa le dipendenze e PyInstaller e crea il programma
+nella cartella `dist\EXIName`.
+
+> ⚠️ Distribuisci sempre **l'intera cartella** `EXIName`: `EXIName.exe` non si
+> avvia senza la cartella `_internal` che si trova accanto.
+
+### Dipendenze
+- [customtkinter](https://github.com/TomSchimansky/CustomTkinter) – interfaccia grafica
+- [Pillow](https://python-pillow.org/) – lettura EXIF delle immagini
+- [pillow-heif](https://github.com/bigcat88/pillow_heif) – supporto HEIC
+- [hachoir](https://github.com/vstinner/hachoir) – metadati dei video
+- [tkinterdnd2](https://github.com/Eliav2/tkinterdnd2) – drag & drop
+
 ---
 
 <a name="english"></a>
@@ -44,3 +65,24 @@ which device created them.
 ### Requirements
 - Windows
 - Python 3 (only to run from source)
+
+### Run from source
+```bash
+pip install -r requirements.txt
+python EXIName.py
+```
+
+### Build the executable
+Run `build_exe.bat`: the script checks that Python is installed, cleans previous
+builds, installs the dependencies and PyInstaller, and creates the program in
+the `dist\EXIName` folder.
+
+> ⚠️ Always distribute the **whole** `EXIName` folder: `EXIName.exe` won't start
+> without the `_internal` folder next to it.
+
+### Dependencies
+- [customtkinter](https://github.com/TomSchimansky/CustomTkinter) – GUI
+- [Pillow](https://python-pillow.org/) – image EXIF reading
+- [pillow-heif](https://github.com/bigcat88/pillow_heif) – HEIC support
+- [hachoir](https://github.com/vstinner/hachoir) – video metadata
+- [tkinterdnd2](https://github.com/Eliav2/tkinterdnd2) – drag & drop
