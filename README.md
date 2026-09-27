@@ -1,3 +1,6 @@
+<img width="1272" height="853" alt="image" src="https://github.com/user-attachments/assets/ccfdd5f9-ee2e-45f4-91ed-4bb2c0354e54" />
+
+
 # EXIName
 
 🇮🇹 **Italiano** · 🇬🇧 [English](#english)
