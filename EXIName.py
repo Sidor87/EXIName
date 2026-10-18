@@ -1,28 +1,32 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-EXIName  v0.2.0
+EXIName  v0.3.0
 ===============
 Rinomina in blocco foto e video in base alla data/ora reale dello scatto
 (EXIF per le immagini, metadati del contenitore per i video), con fallback
 sulla data di ultima modifica quando il metadato manca.
-Formato: aaaa-mm-gg hh.mm.ss  (es. 2025-12-24 18.05.32.jpg)
+Formato predefinito: aaaa-mm-gg hh.mm.ss  (es. 2025-12-24 18.05.32.jpg)
+Il formato di data e ora e' personalizzabile (gg-mm-aaaa, mm-gg-aaaa, ...):
+ogni variazione va confermata e viene ricordata per le volte successive.
 
 Scheda "Rinomina WhatsApp":
     IMG-20260825-WA0002.jpg  ->  2026-08-25-WA0002.jpg
     (vale anche per VID-, AUD-, PTT-, STK-, DOC-), con tre opzioni:
     togli prefisso / formatta data / togli contatore WA
 
-Novita' v0.2.0
-  - pulsanti Avvia / Pausa / Stop: aggiungere cartelle non avvia piu' nulla
-  - ad ogni Avvio chiede se includere le sottocartelle
-  - percentuale, tempo trascorso e tempo rimanente in caricamento,
-    lettura e rinomina
-  - icona nella barra delle applicazioni nitida e con sfondo
-  - italiano / inglese (la scelta viene ricordata)
-  - link GitHub per gli aggiornamenti (con controllo nuova versione),
-    Info e Aiuto
-  - schede sopra la tabella, grafica rinnovata nei colori del logo
+Novita' v0.3.0
+  - spunta "Includi sottocartelle" (ricordata) al posto della domanda ad ogni Avvio
+  - tasto Canc: esclude dalla rinomina le righe selezionate
+    (Ctrl+A seleziona tutto, "Ripristina esclusi" le rimette in elenco)
+  - foto con lo stesso orario: invece di _1, _2 ... si aggiunge 1 secondo
+    (18.05.32 -> 18.05.33 -> 18.05.34 ...); i file gia' rinominati cosi'
+    non vengono toccati di nuovo
+  - grafica piu' compatta e netta: molto piu' spazio per l'elenco dei file
+  - logo Daedalus Code nella finestra Info
+
+Novita' v0.2.1
+  - formato del nome personalizzabile (ordine della data, orario, separatore)
 
 Dipendenze:
     pip install customtkinter pillow hachoir pillow-heif tkinterdnd2
@@ -53,7 +57,7 @@ import webbrowser
 import urllib.request
 from io import BytesIO
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
@@ -97,6 +101,7 @@ except ImportError:
 #                    ottimizzato per le misure piccole)
 #   SYMBOL_PNG    -> simbolo del logo (intestazione, Info, Aiuto)
 #   WORDMARK_PNG  -> scritta "EXIName" del logo
+#   DAEDALUS_PNG  -> logo Daedalus Code (finestra Info)
 # --------------------------------------------------------------------------
 ICON_ICO_BASE64 = (
     "AAABAA8AEBAAAAAAIAC4AgAA9gAAABQUAAAAACAAoAMAAK4DAAAYGAAAAAAgACcEAABOBwAAHh4AAAAAIADtBQAAdQsAACAgAAAA"
@@ -2680,14 +2685,551 @@ WORDMARK_PNG_BASE64 = (
     "be73Ejlwbde0Feupa1za5vi0n3eN26UmD13l6I0emt3lX9nwfrqRdTeND7PReXApz3NSgjktSNqMdccPYl+oljSvVKB7Ka3+z6ev"
     "/wWlgBdnYCkoIgAAAABJRU5ErkJggg=="
 )
+DAEDALUS_PNG_BASE64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAggAAAB+CAMAAAB2xhmkAAACQFBMVEX////9///9/f32/f/1+Prx+Pvw9Pbq9vvr8vXn7vPi7vSQ"
+    "9f3d6O7R4+zD1+C3xMqdzd9k2vSisLZ7rsMr5/4H5/4D9P8D5P4A7f4A4f091/kH2PoC2/sC1fgA2/sA1vdCx+kKwu8CyPMCuOUA"
+    "yvYAuPYqqdoDqeEBp+oArfMAo+uQmp+Dj5V3gYZudHc/iZ4Ti7gDlb0Df6AAl+0AlMMAiMMAeaVdZ2tLUVQEaY8QU2g1Oj0LN0ka"
+    "JCkCIjARFhkCFSMHDxUBDxoAEyEADxsADhsHDRIBDRgBDBQADRoADBcADBUGCg8BCxUBChMBChEACxcACxUACxQACxMAChMAChIA"
+    "ChAFCAwBCREBCBEBCA8BCA4BBw0ACBQACRIACREACRAACBAABxAACA8ABw8ACA4ABw4ABw0ABwwBBg4ABRAABgwABQwBBgsABgsA"
+    "BQsCBQoABgoABQoABAoHBwgFBwgFBgcFBQYEBQcBBggDBQcBBQkBBQgABQkABQgEBAYDBAYEBAQCBAcBBAgBBAcBBAYABAkABAgA"
+    "BAcABAUAAw8BAwkBAwcAAwcCAwYBAwYBAgYAAwYAAgYCAwUBAwUBAgUAAwUAAgUCAwQBAwQBAgQAAwQAAgQDAwMCAgMBAwMBAgMB"
+    "AgIBAgEAAwMAAgMAAgIBAQQAAQoCAQMBAQMAAQMCAQIBAQIAAQICAQEBAQEBAQAAAQEAAQAAAAoAAAUDAAMBAAMAAAMCAAIBAAIA"
+    "AAICAAABAAEBAAAAAAEAAAARDSF9AACaA0lEQVR42p29i18UZ7Y2SmJM1K0yw2zHON4mmkwm8TJjRiOKqOONm1wFbRBBgoAGQUQE"
+    "DCAoIKBAg9DQNC1TvdO0U7Wrvt41erq/qrRV/9pZz1rVxMzMd37nnIqBpi/VVe/7vGs96/pmWKphrOp6VLdtQ7cMw7KSqmHbum4Y"
+    "Bj2javRI0y3LTmg2PYeHuko/DNU2DNPQ9Ti/IeUYum1EdTqFbVi2qdPn6O2qYelyKhtf5Gh4TF+iG06KvpM+FE8ZmoEvV1R5K52e"
+    "vlenc6XobDZ9D1+MqhumQ5dhq6rhODqd0KDrtS06rWkoeKOesExbVxSDXsV10ZfQGQ18r47LpXtR6YwJ25AP0znpb3oep9etFH7G"
+    "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"
+    "lCRC4+3KOpEIHhCkQh65arWkGvrHZkdnZ+eX4EfQpVRD+rAnHaIyKd11z+Q+cVVWDarbnXvGdXsDAc10ui7hGHT1uctn+OBuOF2u"
+    "8jJ0udf/dKbrkqSTrlzmeuPQ9NwlvMvrlTd4hv/qngzJDqtqKHb50uXLly91oUSKPjs5OXntUlAzXTfiupdy/+o6CiZ0sMuh1frf"
+    "l6+pHR1Dly6tII39zBlcCU2hHrzMD7vioekX3Th/lzcFXd2TLyZf9F7qHQrY8a5XEoVyu3JzaQqD2J4OJbSmNu2s5Ha5Mc59ULRw"
+    "IKS73ZddY+6HF9cuu70vph/K+eguh17QU3A9OhGM0CVXm45pbs8l0zXnJnv+2vEiYLhuHENgqoG5y3RRdDUPX8wYbncPMjane/Gx"
+    "bs6FnZ6kL5mem3l4qX8Rm3sREJobr1aVVBRVnv7sP0k1nD97riT/7Tc79xEQakob8mdO7P7s8/3EEW7WttZeryktKSnOh9OxpLg4"
+    "n/4VFhYVVdQ1NDY2ku1Rcb7g6Lbdnx55XljTUlXvcYS6qkJSDdxO6UZlqa/x+u3796EaAv7lQCiYof/cWU+VbRecFf3MgczMzGxa"
+    "x5a+4h5H5mGO+wMy0g4j03BrjtvlZnPOIT3siedm5caVM5nZTpd74DgKml7Rq7nxOQdljMf5fXQu94mbI1mMl3p+CHGc0Z5bOYCA"
+    "Mb38JOjmbM12LzvZWV1DCr370kE6+6GulTiy5Q+4NCvuocxLc5fdg5zUhg/SkesOel+x9ZD7sMM+wxfFH+sxs7Kdax29l7MOuk9W"
+    "LmUhUk3/6G62ZuW6cyQ0dFJsjrsSOZOVmZmjD6pYzHE9NkM3l0WYeehk0+1ddrMP0KX3uNmZuTZd3gG3d44mNBfff+hScC6Yojt3"
+    "e6+5hw8Ee1W68JytOXHC50rkoORT5tq9Xe4hzsEOyseOD0boFE4ufa7Lyc0644zMTvR3dNReJyDkFxUWMxC+PH/2YmW+882uz3fv"
+    "P1td5Mt7/c2efZ/Tw5JbtXda7jTTjDe3tDTfullfX3+T/mior6uqqqtvaKxpbPQVnS84sm3np0feFPsaKyvFfCyorAQQkKNSUFKF"
+    "EtjW9oGxqYnZwPxyaD6UoXq2LgNBbK5B90BWTi5GoTv20D20NTs39+CWnHgP0kizcug4M9T79ExObtaB3Jwzcb1HyTzuutmfHNRf"
+    "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"
+    "/wa94JsP051vcAAAAABJRU5ErkJggg=="
+)
 
 
 # --------------------------------------------------------------------------
 # Costanti
 # --------------------------------------------------------------------------
 APP_TITLE = "EXIName"
-APP_VERSION = "0.2.0"
-APP_RELEASE = datetime(2026, 9, 27)
+APP_VERSION = "0.3.0"
+APP_RELEASE = datetime(2026, 10, 18)
 APP_AUTHOR = "Sidor87"
 GITHUB_URL = "https://github.com/Sidor87/EXIName"
 GITHUB_API_LATEST = "https://api.github.com/repos/Sidor87/EXIName/releases/latest"
@@ -2703,7 +3245,60 @@ VIDEO_EXTENSIONS = {
 }
 MEDIA_EXTENSIONS = IMAGE_EXTENSIONS | VIDEO_EXTENSIONS
 
-DATE_FORMAT = "%Y-%m-%d %H.%M.%S"
+DATE_FORMAT = "%Y-%m-%d %H.%M.%S"          # formato predefinito (e della modifica manuale)
+
+# Formati del nome scelti dall'utente (solo caratteri validi nei nomi Windows:
+# niente "/" ne' ":"). Il primo elemento di ogni elenco e' il predefinito.
+NAME_DATE_STYLES = [          # chiave, strftime
+    ("ymd", "%Y-%m-%d"),
+    ("dmy", "%d-%m-%Y"),
+    ("mdy", "%m-%d-%Y"),
+    ("ymd_u", "%Y_%m_%d"),
+    ("dmy_u", "%d_%m_%Y"),
+    ("ymd_c", "%Y%m%d"),
+    ("dmy_p", "%d.%m.%Y"),
+]
+NAME_TIME_STYLES = [
+    ("hms_p", "%H.%M.%S"),
+    ("hms_d", "%H-%M-%S"),
+    ("hms_c", "%H%M%S"),
+    ("hm_p", "%H.%M"),
+    ("hm_d", "%H-%M"),
+    ("none", ""),
+]
+NAME_SEP_STYLES = [
+    ("space", " "),
+    ("under", "_"),
+    ("dash", "-"),
+]
+DEFAULT_NAME_FORMAT = {"date": "ymd", "time": "hms_p", "sep": "space"}
+FORMAT_SAMPLE_DT = datetime(2025, 12, 24, 18, 5, 32)
+
+# Stesso orario nella stessa cartella: si aggiunge 1 secondo alla volta,
+# fino a questo limite (oltre, o se il formato non ha i secondi: _1, _2, ...)
+MAX_SHIFT_SECONDS = 3600
+
+
+def valid_name_format(value) -> dict:
+    """Formato letto dalle impostazioni; se manca o non e' valido -> predefinito."""
+    fmt = dict(DEFAULT_NAME_FORMAT)
+    if isinstance(value, dict):
+        for part, styles in (("date", NAME_DATE_STYLES), ("time", NAME_TIME_STYLES),
+                             ("sep", NAME_SEP_STYLES)):
+            if value.get(part) in dict(styles):
+                fmt[part] = value[part]
+    return fmt
+
+
+def name_strftime(fmt: dict) -> str:
+    """Stringa strftime completa per il formato scelto."""
+    date = dict(NAME_DATE_STYLES)[fmt["date"]]
+    time_ = dict(NAME_TIME_STYLES)[fmt["time"]]
+    if not time_:
+        return date
+    return date + dict(NAME_SEP_STYLES)[fmt["sep"]] + time_
+
+
 DATE_FORMAT_REGEX = re.compile(r"^(\d{4})-(\d{2})-(\d{2}) (\d{2})\.(\d{2})\.(\d{2})$")
 MIN_VALID_YEAR = 1970          # date "segnaposto" (es. 1904) = EXIF assente
 
@@ -2730,21 +3325,25 @@ MONTHS = {
 STRINGS = {
     "it": {
         "tagline": "Rinomina intelligente per data di scatto",
-        "updates": "Clicca per aggiornamenti",
+        "updates": "Aggiornamenti",
         "update_new": "Nuova versione {v} disponibile!",
         "about": "Info",
         "help": "Aiuto",
         "tab_date": "Rinomina per data",
         "tab_wa": "Rinomina WhatsApp",
-        "drop_hint": "⇩   Trascina qui una o più cartelle (o singoli file)",
-        "drop_hint_nodnd": "Aggiungi una o più cartelle con il pulsante a destra",
+        "drop_hint": "Trascina qui cartelle o file, oppure usa «Aggiungi cartella»",
+        "drop_hint_nodnd": "Usa «Aggiungi cartella» per scegliere le cartelle da leggere",
+        "sources_more": "+{n} altre",
         "add_folder": "＋  Aggiungi cartella",
         "add_folder_title": "Aggiungi una cartella con foto e video",
-        "clear": "Svuota elenco",
-        "start": "▶   Avvia",
-        "pause": "❚❚   Pausa",
-        "resume": "▶   Riprendi",
-        "stop": "■   Stop",
+        "clear": "Svuota",
+        "subfolders": "Includi sottocartelle",
+        "subfolders_n": "({n} sottocartelle)",
+        "subfolders_1": "(1 sottocartella)",
+        "start": "▶  Avvia",
+        "pause": "❚❚  Pausa",
+        "resume": "▶  Riprendi",
+        "stop": "■  Stop",
         "rename": "Rinomina",
         # stato / avanzamento
         "st_empty": "Aggiungi una cartella per iniziare",
@@ -2776,7 +3375,8 @@ STRINGS = {
         "col_after": "Dopo",
         "leg_match": "già corretto",
         "leg_manual": "data manuale",
-        "leg_conflict": "conflitto (verrà saltato)",
+        "leg_shift": "+ secondi (stesso orario)",
+        "leg_conflict": "conflitto (saltato)",
         "cnt_img_1": "1 immagine",
         "cnt_img_n": "{n} immagini",
         "cnt_vid_1": "1 video",
@@ -2784,18 +3384,34 @@ STRINGS = {
         "cnt_wa": "{n} file WhatsApp",
         "cnt_pending": " · {n} da rinominare",
         "cnt_conflict": " · {n} in conflitto",
+        "del_hint": "Canc = escludi i selezionati",
+        "restore": "Ripristina esclusi ({n})",
+        "menu_exclude": "Escludi dalla rinomina\tCanc",
+        "menu_open": "Apri il file",
+        "menu_select_all": "Seleziona tutto\tCtrl+A",
         # opzioni WhatsApp
-        "wa_prefix": "Togli il prefisso (IMG-, VID-, …)",
-        "wa_date": "Formatta la data (20260825 → 2026-08-25)",
-        "wa_counter": "Togli il contatore finale (-WA0002)",
-        "wa_example": "Esempio:   {a}   →   {b}",
+        "wa_prefix": "Togli prefisso (IMG-, VID-…)",
+        "wa_date": "Data con trattini (2026-08-25)",
+        "wa_counter": "Togli contatore (-WA0002)",
+        "wa_example": "Esempio:  {a}  →  {b}",
+        # formato del nome (scheda data)
+        "fmt_date": "Data",
+        "fmt_time": "Ora",
+        "fmt_sep": "Separatore",
+        "fmt_reset": "Predefinito",
+        "fmt_example": "Esempio:  {b}",
+        "fmt_example_def": "Esempio:  {b}  (predefinito)",
+        "fmt_no_time": "senza orario",
+        "fmt_sep_space": "spazio",
+        "fmt_sep_under": "_  trattino basso",
+        "fmt_sep_dash": "-  trattino",
+        "fmt_title": "Formato del nome",
+        "fmt_question": "Vuoi cambiare il formato dei nomi?",
+        "fmt_from_to": "Da:   {a}\nA:     {b}",
+        "fmt_remember": "La scelta verrà ricordata anche le prossime volte.",
+        "fmt_yes": "Sì, usa questo formato",
+        "fmt_busy": "Attendi la fine dell'operazione in corso.",
         # finestre di dialogo
-        "sub_title": "Sottocartelle",
-        "sub_msg_1": "Le cartelle scelte contengono 1 sottocartella.",
-        "sub_msg_n": "Le cartelle scelte contengono {n} sottocartelle.",
-        "sub_question": "Vuoi includerle nella lettura?",
-        "sub_yes": "Sì, includi",
-        "sub_no": "No, solo le cartelle scelte",
         "cancel": "Annulla",
         "confirm": "Conferma",
         "close": "Chiudi",
@@ -2813,6 +3429,7 @@ STRINGS = {
         "folder_n": "cartelle",
         "ren_confirm": "Verranno rinominati {n} file in {d} {w}.",
         "ren_conflicts": "{n} file verranno saltati perché il nome è già in uso.",
+        "ren_excluded": "{n} file esclusi con Canc non verranno toccati.",
         "ren_proceed": "Procedere?",
         "ren_ok": "Rinomina completata con successo.",
         "ren_errors": "Completata con {n} errori:",
@@ -2821,25 +3438,30 @@ STRINGS = {
         "about_by": "Prodotto da: {a}",
         "about_version": "Versione {v}",
         "about_date": "Uscita il {d}",
+        "about_dev": "SVILUPPATO DA",
         "help_title": "Guida di EXIName",
     },
     "en": {
         "tagline": "Smart renaming by capture date",
-        "updates": "Click for updates",
+        "updates": "Updates",
         "update_new": "New version {v} available!",
         "about": "About",
         "help": "Help",
         "tab_date": "Rename by date",
         "tab_wa": "Rename WhatsApp",
-        "drop_hint": "⇩   Drop one or more folders here (or single files)",
-        "drop_hint_nodnd": "Add one or more folders with the button on the right",
+        "drop_hint": "Drop folders or files here, or use «Add folder»",
+        "drop_hint_nodnd": "Use «Add folder» to choose the folders to scan",
+        "sources_more": "+{n} more",
         "add_folder": "＋  Add folder",
         "add_folder_title": "Add a folder with photos and videos",
-        "clear": "Clear list",
-        "start": "▶   Start",
-        "pause": "❚❚   Pause",
-        "resume": "▶   Resume",
-        "stop": "■   Stop",
+        "clear": "Clear",
+        "subfolders": "Include subfolders",
+        "subfolders_n": "({n} subfolders)",
+        "subfolders_1": "(1 subfolder)",
+        "start": "▶  Start",
+        "pause": "❚❚  Pause",
+        "resume": "▶  Resume",
+        "stop": "■  Stop",
         "rename": "Rename",
         "st_empty": "Add a folder to get started",
         "st_idle": "Ready to scan",
@@ -2869,7 +3491,8 @@ STRINGS = {
         "col_after": "After",
         "leg_match": "already correct",
         "leg_manual": "manual date",
-        "leg_conflict": "conflict (will be skipped)",
+        "leg_shift": "+ seconds (same time)",
+        "leg_conflict": "conflict (skipped)",
         "cnt_img_1": "1 image",
         "cnt_img_n": "{n} images",
         "cnt_vid_1": "1 video",
@@ -2877,16 +3500,31 @@ STRINGS = {
         "cnt_wa": "{n} WhatsApp files",
         "cnt_pending": " · {n} to rename",
         "cnt_conflict": " · {n} in conflict",
-        "wa_prefix": "Remove the prefix (IMG-, VID-, …)",
-        "wa_date": "Format the date (20260825 → 2026-08-25)",
-        "wa_counter": "Remove the trailing counter (-WA0002)",
-        "wa_example": "Example:   {a}   →   {b}",
-        "sub_title": "Subfolders",
-        "sub_msg_1": "The selected folders contain 1 subfolder.",
-        "sub_msg_n": "The selected folders contain {n} subfolders.",
-        "sub_question": "Do you want to include them in the scan?",
-        "sub_yes": "Yes, include them",
-        "sub_no": "No, selected folders only",
+        "del_hint": "Del = exclude selected",
+        "restore": "Restore excluded ({n})",
+        "menu_exclude": "Exclude from renaming\tDel",
+        "menu_open": "Open the file",
+        "menu_select_all": "Select all\tCtrl+A",
+        "wa_prefix": "Remove prefix (IMG-, VID-…)",
+        "wa_date": "Dashed date (2026-08-25)",
+        "wa_counter": "Remove counter (-WA0002)",
+        "wa_example": "Example:  {a}  →  {b}",
+        "fmt_date": "Date",
+        "fmt_time": "Time",
+        "fmt_sep": "Separator",
+        "fmt_reset": "Default",
+        "fmt_example": "Example:  {b}",
+        "fmt_example_def": "Example:  {b}  (default)",
+        "fmt_no_time": "no time",
+        "fmt_sep_space": "space",
+        "fmt_sep_under": "_  underscore",
+        "fmt_sep_dash": "-  dash",
+        "fmt_title": "Name format",
+        "fmt_question": "Do you want to change the name format?",
+        "fmt_from_to": "From:   {a}\nTo:       {b}",
+        "fmt_remember": "Your choice will be remembered next time too.",
+        "fmt_yes": "Yes, use this format",
+        "fmt_busy": "Wait until the current operation is finished.",
         "cancel": "Cancel",
         "confirm": "Confirm",
         "close": "Close",
@@ -2904,6 +3542,7 @@ STRINGS = {
         "folder_n": "folders",
         "ren_confirm": "{n} files will be renamed in {d} {w}.",
         "ren_conflicts": "{n} files will be skipped because the name is already in use.",
+        "ren_excluded": "{n} files excluded with Del will not be touched.",
         "ren_proceed": "Continue?",
         "ren_ok": "Renaming completed successfully.",
         "ren_errors": "Completed with {n} errors:",
@@ -2911,6 +3550,7 @@ STRINGS = {
         "about_by": "Made by: {a}",
         "about_version": "Version {v}",
         "about_date": "Released on {d}",
+        "about_dev": "DEVELOPED BY",
         "help_title": "EXIName help",
     },
 }
@@ -2918,30 +3558,38 @@ STRINGS = {
 # Guida: poche istruzioni, mostrate in un semplice riquadro
 HELP = {
     "it": [
-        "Aggiungi le cartelle con «Aggiungi cartella» oppure trascinale nel riquadro azzurro.",
-        "Premi «Avvia» e scegli se includere le sottocartelle. Puoi mettere in pausa o fermare.",
-        "Scegli la scheda: «Rinomina per data» (aaaa-mm-gg hh.mm.ss) oppure "
-        "«Rinomina WhatsApp» con le sue tre opzioni.",
-        "Controlla la tabella e premi «Rinomina». Doppio click sul nome apre il file, "
-        "sulla data proposta la modifica.",
+        "Aggiungi le cartelle con «Aggiungi cartella» oppure trascinale nella finestra.",
+        "Spunta «Includi sottocartelle» se vuoi leggere anche quelle, poi premi «Avvia». "
+        "Puoi mettere in pausa o fermare.",
+        "Scegli la scheda: «Rinomina per data» (di base aaaa-mm-gg hh.mm.ss, formato "
+        "modificabile dai menu Data / Ora / Separatore) oppure «Rinomina WhatsApp».",
+        "Seleziona le righe che non vuoi rinominare e premi Canc (Ctrl+A seleziona tutto). "
+        "Doppio click sul nome apre il file, sulla data proposta la modifica.",
+        "Premi «Rinomina». Foto con lo stesso orario prendono +1 secondo "
+        "(18.05.32 → 18.05.33 → 18.05.34).",
     ],
     "en": [
-        "Add folders with «Add folder» or drag them onto the blue area.",
-        "Press «Start» and choose whether to include subfolders. You can pause or stop.",
-        "Pick the tab: «Rename by date» (yyyy-mm-dd hh.mm.ss) or «Rename WhatsApp» "
-        "with its three options.",
-        "Check the table and press «Rename». Double-click a name to open the file, "
-        "a proposed date to edit it.",
+        "Add folders with «Add folder» or drag them onto the window.",
+        "Tick «Include subfolders» if you want them too, then press «Start». "
+        "You can pause or stop.",
+        "Pick the tab: «Rename by date» (yyyy-mm-dd hh.mm.ss by default, adjustable "
+        "with the Date / Time / Separator menus) or «Rename WhatsApp».",
+        "Select the rows you don't want to rename and press Del (Ctrl+A selects all). "
+        "Double-click a name to open the file, a proposed date to edit it.",
+        "Press «Rename». Photos taken at the same time get +1 second "
+        "(18.05.32 → 18.05.33 → 18.05.34).",
     ],
 }
 HELP_LEGEND = {
-    "it": "Verde = già corretto · Arancione = data manuale · Rosso = conflitto, viene saltato",
-    "en": "Green = already correct · Orange = manual date · Red = conflict, skipped",
+    "it": "Verde = già corretto · Arancione = data manuale · Blu = +secondi · "
+          "Rosso = conflitto, viene saltato",
+    "en": "Green = already correct · Orange = manual date · Blue = +seconds · "
+          "Red = conflict, skipped",
 }
 
 
 # --------------------------------------------------------------------------
-# Impostazioni (lingua) in %APPDATA%\EXIName\settings.json
+# Impostazioni (lingua, formato, sottocartelle) in %APPDATA%\EXIName\settings.json
 # --------------------------------------------------------------------------
 def settings_path() -> Path:
     base = os.environ.get("APPDATA") or str(Path.home() / ".config")
@@ -3216,27 +3864,115 @@ def decode_image(b64: str):
     return Image.open(BytesIO(base64.b64decode(b64)))
 
 
+
 # --------------------------------------------------------------------------
 # Nomi univoci (per cartella) e conflitti
 # --------------------------------------------------------------------------
-def build_unique_names(rows, dt_getter):
+def folder_names(folder: Path, dir_cache: dict) -> set:
+    """Nomi (minuscoli) dei file presenti nella cartella, letti una volta sola."""
+    key = os.path.normcase(str(folder))
+    if key not in dir_cache:
+        try:
+            with os.scandir(folder) as it:
+                dir_cache[key] = {e.name.lower() for e in it if e.is_file()}
+        except OSError:
+            dir_cache[key] = set()
+    return dir_cache[key]
+
+
+def _is_shift_of(stem: str, dt: datetime, fmt: str) -> bool:
+    """True se `stem` e' l'orario dt spostato in avanti di 1..MAX secondi (es. :32 -> :33)."""
+    try:
+        t = datetime.strptime(stem, fmt)
+    except ValueError:
+        return False
+    if t.strftime(fmt) != stem:
+        return False
+    delta = (t - dt.replace(microsecond=0)).total_seconds()
+    return 1 <= delta <= MAX_SHIFT_SECONDS
+
+
+def build_unique_names(rows, dt_getter, fmt: str = DATE_FORMAT, dir_cache: dict | None = None):
     """
     Nome proposto per ogni riga, unico all'interno della propria cartella.
-    Piu' file sullo stesso secondo (stessa estensione, stessa cartella)
-    ricevono _1, _2, ... in ordine cronologico/di nome.
+
+    Piu' file con lo stesso orario: il primo tiene l'orario esatto, gli altri
+    prendono il primo secondo libero dopo (18.05.32 -> 18.05.33 -> 18.05.34).
+    Ordine di precedenza, per non cambiare nomi gia' sistemati:
+      1. chi si chiama gia' esattamente con il proprio orario
+      2. chi ha gia' un nome "spostato" valido per se' (rinominato in passato)
+      3. chi prende il proprio orario esatto (in ordine cronologico)
+      4. gli altri: +1 secondo alla volta.
+    Sono considerati occupati anche i file della cartella che NON fanno parte
+    della rinomina (es. esclusi con Canc o non foto/video).
+    Se il formato non contiene i secondi si usano _1, _2, ... come prima.
     """
-    groups = {}
+    if dir_cache is None:
+        dir_cache = {}
+    with_seconds = "%S" in fmt
+    by_folder = {}
     for row in rows:
-        dt = dt_getter(row)
-        key = (str(row["path"].parent), dt.strftime(DATE_FORMAT), row["ext"].lower())
-        groups.setdefault(key, []).append((dt, row))
+        by_folder.setdefault(os.path.normcase(str(row["path"].parent)), []).append(row)
 
     result = {}
-    for (_folder, base, _ext), items in groups.items():
-        items.sort(key=lambda p: (p[0], natural_key(p[1]["path"].name)))
-        for idx, (_dt, row) in enumerate(items):
-            suffix = "" if idx == 0 else f"_{idx}"
-            result[id(row)] = f"{base}{suffix}{row['ext']}"
+    for folder_rows in by_folder.values():
+        folder = folder_rows[0]["path"].parent
+        own = {r["path"].name.lower() for r in folder_rows}
+        taken = set(folder_names(folder, dir_cache) - own)
+
+        items = []
+        for r in folder_rows:
+            dt = dt_getter(r)
+            items.append((dt, dt.strftime(fmt) + r["ext"], r))
+        items.sort(key=lambda it: (it[0], natural_key(it[2]["path"].name)))
+
+        def claim(row, name):
+            taken.add(name.lower())
+            result[id(row)] = name
+
+        left = []
+        for dt, exact, r in items:                       # 1. gia' corretti
+            if r["path"].name == exact and exact.lower() not in taken:
+                claim(r, exact)
+            else:
+                left.append((dt, exact, r))
+
+        if with_seconds:                                 # 2. gia' spostati in passato
+            rest = []
+            for dt, exact, r in left:
+                cur = r["path"].name
+                stem, ext = os.path.splitext(cur)
+                if (ext == r["ext"] and cur.lower() not in taken
+                        and _is_shift_of(stem, dt, fmt)):
+                    claim(r, cur)
+                else:
+                    rest.append((dt, exact, r))
+            left = rest
+
+        waiting = []
+        for dt, exact, r in left:                        # 3. orario esatto
+            if exact.lower() not in taken:
+                claim(r, exact)
+            else:
+                waiting.append((dt, exact, r))
+
+        for dt, exact, r in waiting:                     # 4. +1 secondo
+            name = None
+            if with_seconds:
+                cur = dt
+                for _ in range(MAX_SHIFT_SECONDS):
+                    cur += timedelta(seconds=1)
+                    cand = cur.strftime(fmt) + r["ext"]
+                    if cand.lower() not in taken:
+                        name = cand
+                        break
+            if name is None:
+                base = dt.strftime(fmt)
+                i = 1
+                while f"{base}_{i}{r['ext']}".lower() in taken:
+                    i += 1
+                name = f"{base}_{i}{r['ext']}"
+            claim(r, name)
     return result
 
 
@@ -3255,14 +3991,7 @@ def find_conflicts(rows, proposed: dict, dir_cache: dict | None = None):
 
     conflicts = set()
     for folder, folder_rows in by_folder.items():
-        key = os.path.normcase(str(folder))
-        if key not in dir_cache:
-            try:
-                with os.scandir(folder) as it:
-                    dir_cache[key] = {e.name.lower() for e in it if e.is_file()}
-            except OSError:
-                dir_cache[key] = set()
-        existing = dir_cache[key]
+        existing = folder_names(folder, dir_cache)
         moving = {r["path"].name.lower() for r in folder_rows
                   if proposed[id(r)] != r["path"].name}
         seen = set()
@@ -3422,8 +4151,10 @@ def rename_worker(todo, q):
     q.put(("done", errors, done))
 
 
+
+
 # --------------------------------------------------------------------------
-# Tema: chiaro e luminoso, nei colori del logo
+# Tema: chiaro e luminoso, nei colori del logo, linee nette
 # --------------------------------------------------------------------------
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
@@ -3431,35 +4162,40 @@ ctk.set_default_color_theme("blue")
 T = dict(
     navy="#0F447A",            # blu scuro del logo
     navy_hover="#0B3561",
-    blue="#438DC7",            # azzurro del logo
-    blue_hover="#3478B0",
+    blue="#2F86D0",            # azzurro del logo, un filo piu' vivo
+    blue_hover="#2470B2",
     sky="#7FC1F2",
-    bg_app="#F3F8FE",
+    bg_app="#F2F6FB",
     header="#FFFFFF",
     card="#FFFFFF",
-    border="#DCE7F4",
-    text="#0F2F52",
-    subtle="#6A7D96",
-    accent_soft="#EAF4FD",
+    border="#D6E0EC",
+    divider="#E4EBF3",
+    text="#13304F",
+    subtle="#647891",
+    accent_soft="#EAF3FC",
     drop_border="#9CC8F0",
-    row_alt="#F7FAFE",
-    heading="#EEF5FD",
-    select_bg="#D3E7FA",
-    secondary="#EDF3FB",
-    secondary_hover="#DDE9F7",
-    disabled="#C9D7E8",
+    row_alt="#F7FAFD",
+    heading="#F0F5FA",
+    select_bg="#CFE3F7",
+    secondary="#EDF2F8",
+    secondary_hover="#DCE7F3",
+    disabled="#C5D3E3",
     pause_bg="#FFF3DC",
     pause_hover="#FFE7B8",
     pause_text="#A86200",
     stop_bg="#FDEBEA",
     stop_hover="#FAD6D4",
     stop_text="#C8342E",
-    conflict="#E0413A",
-    manual="#DB8400",
-    match="#119A5C",
+    conflict="#D93A33",
+    manual="#D27F00",
+    shift="#2470B2",
+    match="#11925A",
     update="#E07A00",
+    logo_bg="#05070B",         # sfondo del logo Daedalus Code
 )
 FONT = "Segoe UI" if sys.platform.startswith("win") else "Helvetica"
+R_CARD = 8                     # raggi piccoli: aspetto piu' netto
+R_BTN = 6
 _ICON_FILE = None           # percorso del .ico generato (usato anche dalle finestre di dialogo)
 
 
@@ -3539,26 +4275,60 @@ def apply_icon(window):
 # --------------------------------------------------------------------------
 # Piccoli widget
 # --------------------------------------------------------------------------
-class LinkButton(ctk.CTkButton):
-    """Sembra testo; al passaggio del mouse compare il pulsante (sfondo + bordo)."""
+def font(size=12, bold=False, underline=False):
+    return ctk.CTkFont(family=FONT, size=size, weight="bold" if bold else "normal",
+                       underline=underline)
 
-    def __init__(self, master, text, command, image=None, text_color=None, bg=None):
+
+def vsep(master, height=24, padx=10):
+    """Divisore verticale sottile."""
+    f = ctk.CTkFrame(master, fg_color=T["divider"], width=1, height=height, corner_radius=0)
+    f.pack(side="left", padx=padx)
+    return f
+
+
+class LinkButton(ctk.CTkButton):
+    """Sembra testo; al passaggio del mouse compare lo sfondo."""
+
+    def __init__(self, master, text, command, image=None, text_color=None, bg=None, size=12):
         self._bg = bg or T["header"]
         super().__init__(
             master, text=text, command=command, image=image, compound="left",
-            width=20, height=32, corner_radius=9, border_width=1,
-            fg_color=self._bg, hover_color=T["accent_soft"], border_color=self._bg,
-            text_color=text_color or T["text"], font=ctk.CTkFont(size=13),
-            cursor="hand2",
+            width=20, height=28, corner_radius=R_BTN, border_width=0,
+            fg_color=self._bg, hover_color=T["accent_soft"],
+            text_color=text_color or T["text"], font=font(size), cursor="hand2",
         )
-        self.bind("<Enter>", lambda e: self.configure(border_color=T["drop_border"]), add="+")
-        self.bind("<Leave>", lambda e: self.configure(border_color=self._bg), add="+")
+
+
+class Tooltip:
+    """Piccolo suggerimento che compare sopra un widget (percorso completo delle cartelle)."""
+
+    def __init__(self, widget, text):
+        self.widget, self.text, self.tip = widget, text, None
+        widget.bind("<Enter>", self._show, add="+")
+        widget.bind("<Leave>", self._hide, add="+")
+
+    def _show(self, _e=None):
+        if self.tip:
+            return
+        x = self.widget.winfo_rootx()
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 4
+        self.tip = tk.Toplevel(self.widget)
+        self.tip.wm_overrideredirect(True)
+        self.tip.wm_geometry(f"+{x}+{y}")
+        tk.Label(self.tip, text=self.text, bg=T["navy"], fg="#FFFFFF", padx=8, pady=3,
+                 font=(FONT, 9)).pack()
+
+    def _hide(self, _e=None):
+        if self.tip:
+            self.tip.destroy()
+            self.tip = None
 
 
 class GradientBar(tk.Canvas):
     """Sottile striscia sfumata nei colori del logo."""
 
-    def __init__(self, master, height=4, colors=(T["navy"], T["blue"], T["sky"])):
+    def __init__(self, master, height=3, colors=(T["navy"], T["blue"], T["sky"])):
         super().__init__(master, height=height, highlightthickness=0, bd=0, bg=colors[0])
         self._colors = [tuple(int(c[i:i + 2], 16) for i in (1, 3, 5)) for c in colors]
         self.bind("<Configure>", self._draw)
@@ -3578,6 +4348,21 @@ class GradientBar(tk.Canvas):
             x0 = int(w * s / steps)
             x1 = int(w * (s + 1) / steps) + 1
             self.create_rectangle(x0, 0, x1, h, fill=col, outline="")
+
+
+def primary_button(master, text, command, width=110, height=34):
+    return ctk.CTkButton(master, text=text, command=command, width=width, height=height,
+                         corner_radius=R_BTN, fg_color=T["navy"], hover_color=T["navy_hover"],
+                         text_color="#FFFFFF", text_color_disabled="#FFFFFF",
+                         font=font(13, True))
+
+
+def secondary_button(master, text, command, width=110, height=34):
+    return ctk.CTkButton(master, text=text, command=command, width=width, height=height,
+                         corner_radius=R_BTN, fg_color=T["secondary"],
+                         hover_color=T["secondary_hover"], border_width=1,
+                         border_color=T["border"], text_color=T["text"],
+                         text_color_disabled=T["disabled"], font=font(13))
 
 
 class Dialog(ctk.CTkToplevel):
@@ -3603,6 +4388,12 @@ class Dialog(ctk.CTkToplevel):
         except Exception:
             pass
 
+    def card(self):
+        c = ctk.CTkFrame(self, fg_color=T["card"], corner_radius=R_CARD,
+                         border_width=1, border_color=T["border"])
+        c.pack(fill="both", expand=True, padx=14, pady=14)
+        return c
+
 
 class ChoiceDialog(Dialog):
     """Domanda con piu' risposte; self.result = valore del pulsante premuto."""
@@ -3610,26 +4401,19 @@ class ChoiceDialog(Dialog):
     def __init__(self, master, title, lines, buttons, width=470, height=205):
         super().__init__(master, title, width, height)
         self.result = None
-        card = ctk.CTkFrame(self, fg_color=T["card"], corner_radius=14,
-                            border_width=1, border_color=T["border"])
-        card.pack(fill="both", expand=True, padx=16, pady=16)
+        card = self.card()
         for i, line in enumerate(lines):
             ctk.CTkLabel(card, text=line, wraplength=width - 80, justify="left",
                          text_color=T["text"] if i else T["navy"],
-                         font=ctk.CTkFont(size=15 if i == 0 else 13,
-                                          weight="bold" if i == 0 else "normal"),
+                         font=font(15 if i == 0 else 13, i == 0),
                          ).pack(anchor="w", padx=20, pady=(18 if i == 0 else 4, 0))
         row = ctk.CTkFrame(card, fg_color="transparent")
         row.pack(side="bottom", fill="x", padx=16, pady=16)
         first = None
         for text, value, primary in reversed(buttons):
-            b = ctk.CTkButton(
-                row, text=text, height=36, corner_radius=10,
-                fg_color=T["navy"] if primary else T["secondary"],
-                hover_color=T["navy_hover"] if primary else T["secondary_hover"],
-                text_color="#FFFFFF" if primary else T["text"],
-                font=ctk.CTkFont(size=13, weight="bold" if primary else "normal"),
-                command=lambda v=value: self._choose(v))
+            make = primary_button if primary else secondary_button
+            b = make(row, text, lambda v=value: self._choose(v), width=120)
+            b.configure(width=max(120, len(text) * 8))
             b.pack(side="right", padx=4)
             if primary:
                 first = value
@@ -3649,24 +4433,21 @@ class EditDateDialog(Dialog):
         super().__init__(app, app.tr("edit_title"), 380, 210)
         self.app = app
         self.on_confirm = on_confirm
-        ctk.CTkLabel(self, text=app.tr("edit_format"),
-                     font=ctk.CTkFont(size=12), text_color=T["subtle"]).pack(pady=(22, 6))
-        self.entry = ctk.CTkEntry(self, width=240, height=38, justify="center",
-                                  corner_radius=10, border_color=T["drop_border"],
-                                  font=ctk.CTkFont(size=14))
+        card = self.card()
+        ctk.CTkLabel(card, text=app.tr("edit_format"),
+                     font=font(12), text_color=T["subtle"]).pack(pady=(16, 6))
+        self.entry = ctk.CTkEntry(card, width=240, height=36, justify="center",
+                                  corner_radius=R_BTN, border_color=T["drop_border"],
+                                  font=font(14))
         self.entry.insert(0, current_text)
-        self.entry.pack(pady=4)
+        self.entry.pack(pady=2)
         self.entry.focus_set()
-        self.error_label = ctk.CTkLabel(self, text="", text_color=T["conflict"])
+        self.error_label = ctk.CTkLabel(card, text="", text_color=T["conflict"], font=font(12))
         self.error_label.pack()
-        bf = ctk.CTkFrame(self, fg_color="transparent")
-        bf.pack(pady=8)
-        ctk.CTkButton(bf, text=app.tr("cancel"), width=110, height=34, corner_radius=10,
-                      fg_color=T["secondary"], hover_color=T["secondary_hover"],
-                      text_color=T["text"], command=self.destroy).pack(side="left", padx=6)
-        ctk.CTkButton(bf, text=app.tr("confirm"), width=110, height=34, corner_radius=10,
-                      fg_color=T["navy"], hover_color=T["navy_hover"],
-                      command=self._confirm).pack(side="left", padx=6)
+        bf = ctk.CTkFrame(card, fg_color="transparent")
+        bf.pack(pady=(2, 12))
+        secondary_button(bf, app.tr("cancel"), self.destroy).pack(side="left", padx=5)
+        primary_button(bf, app.tr("confirm"), self._confirm).pack(side="left", padx=5)
         self.entry.bind("<Return>", lambda e: self._confirm())
         self.bind("<Escape>", lambda e: self.destroy())
 
@@ -3686,33 +4467,42 @@ class EditDateDialog(Dialog):
 
 class AboutDialog(Dialog):
     def __init__(self, app):
-        super().__init__(app, app.tr("about_title"), 440, 380)
-        card = ctk.CTkFrame(self, fg_color=T["card"], corner_radius=16,
-                            border_width=1, border_color=T["border"])
-        card.pack(fill="both", expand=True, padx=16, pady=16)
-        GradientBar(card, height=4).pack(fill="x", padx=14, pady=(12, 0))
-        sym = app.symbol_image(72)
+        has_logo = app.daedalus_image(96) is not None
+        super().__init__(app, app.tr("about_title"), 470, 462 if has_logo else 330)
+        card = self.card()
+        GradientBar(card, height=3).pack(fill="x", padx=1, pady=(1, 0))
+        brand = ctk.CTkFrame(card, fg_color="transparent")
+        brand.pack(pady=(18, 10))
+        sym = app.symbol_image(52)
         if sym:
-            ctk.CTkLabel(card, text="", image=sym).pack(pady=(18, 4))
-        wm = app.wordmark_image(34)
+            ctk.CTkLabel(brand, text="", image=sym).pack(side="left", padx=(0, 10))
+        wm = app.wordmark_image(30)
         if wm:
-            ctk.CTkLabel(card, text="", image=wm).pack(pady=(0, 14))
+            ctk.CTkLabel(brand, text="", image=wm).pack(side="left")
         else:
-            ctk.CTkLabel(card, text=APP_TITLE, text_color=T["navy"],
-                         font=ctk.CTkFont(size=26, weight="bold")).pack(pady=(0, 14))
+            ctk.CTkLabel(brand, text=APP_TITLE, text_color=T["navy"],
+                         font=font(26, True)).pack(side="left")
+        ctk.CTkLabel(card, text=app.tr("about_version", v=APP_VERSION) + "  ·  " +
+                     app.tr("about_date", d=app.release_date()),
+                     text_color=T["subtle"], font=font(12)).pack()
         ctk.CTkLabel(card, text=app.tr("about_by", a=APP_AUTHOR), text_color=T["text"],
-                     font=ctk.CTkFont(size=14, weight="bold")).pack()
+                     font=font(13, True)).pack(pady=(10, 0))
         link = ctk.CTkLabel(card, text=GITHUB_URL, text_color=T["blue"], cursor="hand2",
-                            font=ctk.CTkFont(size=13, underline=True))
-        link.pack(pady=2)
+                            font=font(12, underline=True))
+        link.pack(pady=(0, 4))
         link.bind("<Button-1>", lambda e: webbrowser.open(GITHUB_URL))
-        ctk.CTkLabel(card, text=app.tr("about_version", v=APP_VERSION), text_color=T["text"],
-                     font=ctk.CTkFont(size=13)).pack(pady=(2, 0))
-        ctk.CTkLabel(card, text=app.tr("about_date", d=app.release_date()),
-                     text_color=T["subtle"], font=ctk.CTkFont(size=13)).pack()
-        ctk.CTkButton(card, text=app.tr("close"), width=120, height=34, corner_radius=10,
-                      fg_color=T["navy"], hover_color=T["navy_hover"],
-                      command=self.destroy).pack(side="bottom", pady=16)
+
+        if has_logo:
+            ctk.CTkFrame(card, fg_color=T["divider"], height=1,
+                         corner_radius=0).pack(fill="x", padx=24, pady=(12, 10))
+            ctk.CTkLabel(card, text=app.tr("about_dev"), text_color=T["subtle"],
+                         font=font(10, True)).pack()
+            box = ctk.CTkFrame(card, fg_color=T["logo_bg"], corner_radius=R_CARD)
+            box.pack(padx=24, pady=(6, 0))
+            ctk.CTkLabel(box, text="", image=app.daedalus_image(96)).pack(padx=6, pady=6)
+
+        primary_button(card, app.tr("close"), self.destroy, width=120).pack(side="bottom",
+                                                                            pady=14)
         self.bind("<Escape>", lambda e: self.destroy())
 
 
@@ -3720,28 +4510,24 @@ class HelpDialog(Dialog):
     """Riquadro semplice con le istruzioni essenziali."""
 
     def __init__(self, app):
-        super().__init__(app, app.tr("help_title"), 560, 370)
-        card = ctk.CTkFrame(self, fg_color=T["card"], corner_radius=16,
-                            border_width=1, border_color=T["border"])
-        card.pack(fill="both", expand=True, padx=16, pady=16)
+        super().__init__(app, app.tr("help_title"), 580, 460)
+        card = self.card()
         ctk.CTkLabel(card, text=app.tr("help_title"), text_color=T["navy"],
-                     font=ctk.CTkFont(size=19, weight="bold")).pack(anchor="w", padx=22,
-                                                                  pady=(18, 10))
+                     font=font(17, True)).pack(anchor="w", padx=20, pady=(16, 8))
         for i, line in enumerate(HELP[app.lang], start=1):
             row = ctk.CTkFrame(card, fg_color="transparent")
-            row.pack(fill="x", padx=22, pady=5)
-            ctk.CTkLabel(row, text=str(i), width=28, height=28, corner_radius=14,
+            row.pack(fill="x", padx=20, pady=4)
+            ctk.CTkLabel(row, text=str(i), width=24, height=24, corner_radius=12,
                          fg_color=T["navy"], text_color="#FFFFFF",
-                         font=ctk.CTkFont(size=13, weight="bold")).pack(side="left", anchor="n")
-            ctk.CTkLabel(row, text=line, wraplength=430, justify="left", anchor="w",
-                         text_color=T["text"], font=ctk.CTkFont(size=13),
-                         ).pack(side="left", fill="x", padx=(12, 0))
-        ctk.CTkLabel(card, text=HELP_LEGEND[app.lang], wraplength=480, justify="left",
-                     text_color=T["subtle"], font=ctk.CTkFont(size=12),
-                     ).pack(anchor="w", padx=22, pady=(10, 0))
-        ctk.CTkButton(card, text=app.tr("close"), width=120, height=34, corner_radius=10,
-                      fg_color=T["navy"], hover_color=T["navy_hover"],
-                      command=self.destroy).pack(side="bottom", pady=16)
+                         font=font(12, True)).pack(side="left", anchor="n")
+            ctk.CTkLabel(row, text=line, wraplength=470, justify="left", anchor="w",
+                         text_color=T["text"], font=font(12),
+                         ).pack(side="left", fill="x", padx=(10, 0))
+        ctk.CTkLabel(card, text=HELP_LEGEND[app.lang], wraplength=510, justify="left",
+                     text_color=T["subtle"], font=font(11),
+                     ).pack(anchor="w", padx=20, pady=(8, 0))
+        primary_button(card, app.tr("close"), self.destroy, width=120).pack(side="bottom",
+                                                                            pady=14)
         self.bind("<Escape>", lambda e: self.destroy())
 
 
@@ -3767,22 +4553,25 @@ class EXIName(*_BASES):
         self.settings = load_settings()
         self.lang = self.settings.get("lang") if self.settings.get("lang") in STRINGS \
             else system_language()
+        self.name_fmt = valid_name_format(self.settings.get("name_format"))
 
         self.title(f"{APP_TITLE} {APP_VERSION}")
         self.geometry("1280x820")
-        self.minsize(1060, 660)
+        self.minsize(1120, 640)
         self.configure(fg_color=T["bg_app"])
         apply_icon(self)
 
         # dati
         self.sources: list[Path] = []
-        self.recursive = False
         self.date_rows, self.wa_rows = [], []
+        self.date_excluded, self.wa_excluded = [], []      # righe tolte con Canc
         self.date_names, self.date_conflicts = {}, set()
         self.wa_names, self.wa_conflicts = {}, set()
         self.date_items, self.wa_items = {}, {}
-        self.sort_state = {}
+        self.sort_active = {}                              # scheda -> (colonna, crescente)
         self.dir_cache = {}
+        self.recursive_var = tk.BooleanVar(value=bool(self.settings.get("include_subfolders",
+                                                                        True)))
         self.wa_strip_prefix = tk.BooleanVar(value=True)
         self.wa_format_date = tk.BooleanVar(value=True)
         self.wa_strip_counter = tk.BooleanVar(value=False)
@@ -3797,6 +4586,7 @@ class EXIName(*_BASES):
         self._timing_reset()
         self.latest_version = None
         self._img_cache = {}
+        self._n_sub = 0
 
         self._build_ui()
         self._enable_drop()
@@ -3824,6 +4614,27 @@ class EXIName(*_BASES):
     def plural(self, key, n):
         return self.tr(f"{key}_1") if n == 1 else self.tr(f"{key}_n", n=self.fmt_int(n))
 
+    def fmt_label(self, part, key) -> str:
+        """Testo mostrato nei menu del formato (aaaa-mm-gg / yyyy-mm-dd, ...)."""
+        if part == "sep":
+            return self.tr(f"fmt_sep_{key}")
+        pattern = dict(NAME_DATE_STYLES if part == "date" else NAME_TIME_STYLES)[key]
+        if not pattern:
+            return self.tr("fmt_no_time")
+        y, d = ("aaaa", "gg") if self.lang == "it" else ("yyyy", "dd")
+        for code, text in (("%Y", y), ("%m", "mm"), ("%d", d),
+                           ("%H", "hh"), ("%M", "mm"), ("%S", "ss")):
+            pattern = pattern.replace(code, text)
+        return pattern
+
+    def fmt_labels(self, part):
+        styles = {"date": NAME_DATE_STYLES, "time": NAME_TIME_STYLES,
+                  "sep": NAME_SEP_STYLES}[part]
+        return [(k, self.fmt_label(part, k)) for k, _ in styles]
+
+    def date_format(self) -> str:
+        return name_strftime(self.name_fmt)
+
     def release_date(self) -> str:
         d = APP_RELEASE
         month = MONTHS[self.lang][d.month - 1]
@@ -3832,7 +4643,8 @@ class EXIName(*_BASES):
     # ------------------------------------------------------------ immagini
     def _pil(self, name):
         if name not in self._img_cache:
-            b64 = {"symbol": SYMBOL_PNG_BASE64, "wordmark": WORDMARK_PNG_BASE64}[name]
+            b64 = {"symbol": SYMBOL_PNG_BASE64, "wordmark": WORDMARK_PNG_BASE64,
+                   "daedalus": DAEDALUS_PNG_BASE64}[name]
             self._img_cache[name] = decode_image(b64).convert("RGBA")
         return self._img_cache[name]
 
@@ -3852,6 +4664,9 @@ class EXIName(*_BASES):
     def wordmark_image(self, height):
         return self._ctk_image("wordmark", height)
 
+    def daedalus_image(self, height):
+        return self._ctk_image("daedalus", height)
+
     def _github_image(self):
         if not PIL_AVAILABLE:
             return None
@@ -3859,7 +4674,7 @@ class EXIName(*_BASES):
             try:
                 if p.is_file():
                     img = Image.open(p).convert("RGBA")
-                    return ctk.CTkImage(light_image=img, dark_image=img, size=(18, 18))
+                    return ctk.CTkImage(light_image=img, dark_image=img, size=(16, 16))
             except Exception:
                 pass
         # icona generica: cerchio con freccia di aggiornamento
@@ -3870,194 +4685,230 @@ class EXIName(*_BASES):
         d.line((s // 2, 24, s // 2, 62), fill="white", width=10)
         d.polygon([(s // 2 - 20, 50), (s // 2 + 20, 50), (s // 2, 72)], fill="white")
         d.line((28, 76, s - 28, 76), fill="white", width=7)
-        return ctk.CTkImage(light_image=img, dark_image=img, size=(18, 18))
+        return ctk.CTkImage(light_image=img, dark_image=img, size=(16, 16))
 
     # ------------------------------------------------------------ costruzione UI
-    def _build_ui(self):
-        pad = 22
-        GradientBar(self, height=4).pack(fill="x")
+    def _card(self, master, **pack):
+        c = ctk.CTkFrame(master, fg_color=T["card"], corner_radius=R_CARD,
+                         border_width=1, border_color=T["border"])
+        c.pack(**pack)
+        return c
 
-        # ---- Intestazione ---------------------------------------------
-        header = ctk.CTkFrame(self, fg_color=T["header"], corner_radius=0, height=86)
+    def _build_ui(self):
+        pad = 14
+        GradientBar(self, height=3).pack(fill="x")
+
+        # ---- Intestazione compatta -------------------------------------
+        header = ctk.CTkFrame(self, fg_color=T["header"], corner_radius=0, height=54)
         header.pack(fill="x")
         header.pack_propagate(False)
         ctk.CTkFrame(self, fg_color=T["border"], height=1, corner_radius=0).pack(fill="x")
 
         brand = ctk.CTkFrame(header, fg_color="transparent")
         brand.pack(side="left", padx=pad)
-        sym = self.symbol_image(60)
+        sym = self.symbol_image(34)
         if sym:
-            ctk.CTkLabel(brand, text="", image=sym).pack(side="left", padx=(0, 12))
-        names = ctk.CTkFrame(brand, fg_color="transparent")
-        names.pack(side="left")
-        wm = self.wordmark_image(34)
+            ctk.CTkLabel(brand, text="", image=sym).pack(side="left", padx=(0, 8))
+        wm = self.wordmark_image(22)
         if wm:
-            ctk.CTkLabel(names, text="", image=wm, height=38).pack(anchor="w")
+            ctk.CTkLabel(brand, text="", image=wm).pack(side="left")
         else:
-            ctk.CTkLabel(names, text=APP_TITLE, text_color=T["navy"],
-                         font=ctk.CTkFont(size=28, weight="bold")).pack(anchor="w")
-        ctk.CTkLabel(names, text=self.tr("tagline"), text_color=T["subtle"], height=18,
-                     font=ctk.CTkFont(size=13)).pack(anchor="w", padx=(2, 0))
+            ctk.CTkLabel(brand, text=APP_TITLE, text_color=T["navy"],
+                         font=font(20, True)).pack(side="left")
+        vsep(brand, height=22, padx=12)
+        ctk.CTkLabel(brand, text=self.tr("tagline"), text_color=T["subtle"],
+                     font=font(12)).pack(side="left")
 
         right = ctk.CTkFrame(header, fg_color="transparent")
         right.pack(side="right", padx=pad)
         self.lang_seg = ctk.CTkSegmentedButton(
-            right, values=["IT", "EN"], command=self._on_language, width=86, height=30,
-            corner_radius=9, font=ctk.CTkFont(size=12, weight="bold"),
+            right, values=["IT", "EN"], command=self._on_language, width=76, height=26,
+            corner_radius=R_BTN, font=font(11, True),
             fg_color=T["secondary"], selected_color=T["navy"],
             selected_hover_color=T["navy_hover"], unselected_color=T["secondary"],
             unselected_hover_color=T["secondary_hover"], text_color=("#FFFFFF", "#FFFFFF"),
             text_color_disabled=T["subtle"],
         )
         self.lang_seg.set(self.lang.upper())
-        self.lang_seg.pack(side="right", padx=(14, 0))
+        self.lang_seg.pack(side="right", padx=(10, 0))
         self._style_lang_seg()
-        ctk.CTkFrame(right, fg_color=T["border"], width=1, height=26).pack(side="right", padx=8)
-        LinkButton(right, self.tr("help"), lambda: self._open_dialog(HelpDialog)).pack(side="right", padx=2)
-        LinkButton(right, self.tr("about"), lambda: self._open_dialog(AboutDialog)).pack(side="right", padx=2)
+        ctk.CTkFrame(right, fg_color=T["divider"], width=1, height=22).pack(side="right", padx=6)
+        LinkButton(right, self.tr("help"), lambda: self._open_dialog(HelpDialog)).pack(side="right")
+        LinkButton(right, self.tr("about"), lambda: self._open_dialog(AboutDialog)).pack(side="right")
         self.update_link = LinkButton(right, self.tr("updates"), self._open_github,
                                       image=self._github_image())
-        self.update_link.pack(side="right", padx=2)
+        self.update_link.pack(side="right")
         self._show_update_status()
 
         body = ctk.CTkFrame(self, fg_color="transparent")
-        body.pack(fill="both", expand=True, padx=pad, pady=(16, 0))
+        body.pack(fill="both", expand=True, padx=pad, pady=(12, 0))
 
-        # ---- Sorgenti: zona di rilascio + elenco cartelle --------------
-        src = ctk.CTkFrame(body, fg_color=T["card"], corner_radius=16,
-                           border_width=1, border_color=T["border"])
-        src.pack(fill="x", pady=(0, 12))
-        self.drop_zone = ctk.CTkFrame(src, fg_color=T["accent_soft"], corner_radius=12,
-                                      border_width=2, border_color=T["drop_border"], height=112)
+        # ---- Barra comandi: cartelle | sottocartelle | avvio | stato ----
+        tool = self._card(body, fill="x")
+        row = ctk.CTkFrame(tool, fg_color="transparent")
+        row.pack(fill="x", padx=10, pady=(10, 6))
+        self.btn_add = ctk.CTkButton(
+            row, text=self.tr("add_folder"), command=self.add_folder_dialog,
+            width=168, height=34, corner_radius=R_BTN, fg_color=T["blue"],
+            hover_color=T["blue_hover"], text_color_disabled="#FFFFFF", font=font(13, True))
+        self.btn_add.pack(side="left")
+        self.btn_clear = secondary_button(row, self.tr("clear"), self.clear_sources, width=84)
+        self.btn_clear.pack(side="left", padx=(6, 0))
+        vsep(row, height=26, padx=14)
+        self.chk_sub = ctk.CTkCheckBox(
+            row, text=self.tr("subfolders"), variable=self.recursive_var,
+            command=self._on_subfolders, corner_radius=4, border_width=2,
+            checkbox_width=18, checkbox_height=18, fg_color=T["navy"],
+            hover_color=T["navy_hover"], border_color=T["blue"], text_color=T["text"],
+            text_color_disabled=T["subtle"], font=font(13))
+        self.chk_sub.pack(side="left")
+        self.sub_count = ctk.CTkLabel(row, text="", text_color=T["subtle"], font=font(12))
+        self.sub_count.pack(side="left", padx=(6, 0))
+
+        self.btn_stop = ctk.CTkButton(
+            row, text=self.tr("stop"), command=self.stop_scan, width=90, height=34,
+            corner_radius=R_BTN, fg_color=T["stop_bg"], hover_color=T["stop_hover"],
+            text_color=T["stop_text"], font=font(13, True))
+        self.btn_stop.pack(side="right")
+        self.btn_pause = ctk.CTkButton(
+            row, text=self.tr("pause"), command=self.toggle_pause, width=112, height=34,
+            corner_radius=R_BTN, fg_color=T["pause_bg"], hover_color=T["pause_hover"],
+            text_color=T["pause_text"], font=font(13, True))
+        self.btn_pause.pack(side="right", padx=6)
+        self.btn_start = primary_button(row, self.tr("start"), self.start_scan, width=112)
+        self.btn_start.pack(side="right")
+
+        # elenco cartelle scelte (a "chip"), anche zona di rilascio
+        self.drop_zone = ctk.CTkFrame(tool, fg_color=T["accent_soft"], corner_radius=R_BTN,
+                                      border_width=1, border_color=T["drop_border"], height=36)
+        self.drop_zone.pack(fill="x", padx=10, pady=(0, 8))
         self.drop_zone.pack_propagate(False)
-        self.drop_zone.pack(side="left", fill="both", expand=True, padx=(12, 10), pady=12)
         self.drop_hint = ctk.CTkLabel(
             self.drop_zone,
-            text=self.tr("drop_hint") if DND_AVAILABLE else self.tr("drop_hint_nodnd"),
-            font=ctk.CTkFont(size=14), text_color=T["blue"])
-        self.src_list = ctk.CTkScrollableFrame(self.drop_zone, fg_color="transparent",
-                                               height=74, corner_radius=0,
-                                               scrollbar_button_color=T["drop_border"])
-        side = ctk.CTkFrame(src, fg_color="transparent")
-        side.pack(side="right", padx=(0, 12), pady=12, fill="y")
-        self.btn_add = ctk.CTkButton(
-            side, text=self.tr("add_folder"), command=self.add_folder_dialog,
-            width=200, height=40, corner_radius=11, fg_color=T["blue"],
-            hover_color=T["blue_hover"], font=ctk.CTkFont(size=14, weight="bold"))
-        self.btn_add.pack(fill="x")
-        self.btn_clear = ctk.CTkButton(
-            side, text=self.tr("clear"), command=self.clear_sources, width=200, height=32,
-            corner_radius=10, fg_color=T["secondary"], hover_color=T["secondary_hover"],
-            text_color=T["text"], font=ctk.CTkFont(size=13))
-        self.btn_clear.pack(fill="x", pady=(10, 0))
+            text=("⇩   " + self.tr("drop_hint")) if DND_AVAILABLE else self.tr("drop_hint_nodnd"),
+            font=font(12), text_color=T["blue"])
+        self.chip_row = ctk.CTkFrame(self.drop_zone, fg_color="transparent")
+        self.chip_row.bind("<Configure>", lambda e: self._layout_chips())
+        self.chips = []
+        self.chip_more = None
 
-        # ---- Comandi + avanzamento ------------------------------------
-        ctrl = ctk.CTkFrame(body, fg_color=T["card"], corner_radius=16,
-                            border_width=1, border_color=T["border"])
-        ctrl.pack(fill="x", pady=(0, 12))
-        btns = ctk.CTkFrame(ctrl, fg_color="transparent")
-        btns.pack(side="left", padx=14, pady=14)
-        self.btn_start = ctk.CTkButton(
-            btns, text=self.tr("start"), command=self.start_scan, width=120, height=42,
-            corner_radius=11, fg_color=T["navy"], hover_color=T["navy_hover"],
-            font=ctk.CTkFont(size=14, weight="bold"), text_color_disabled="#FFFFFF")
-        self.btn_start.pack(side="left")
-        self.btn_pause = ctk.CTkButton(
-            btns, text=self.tr("pause"), command=self.toggle_pause, width=120, height=42,
-            corner_radius=11, fg_color=T["pause_bg"], hover_color=T["pause_hover"],
-            text_color=T["pause_text"], font=ctk.CTkFont(size=14, weight="bold"))
-        self.btn_pause.pack(side="left", padx=8)
-        self.btn_stop = ctk.CTkButton(
-            btns, text=self.tr("stop"), command=self.stop_scan, width=110, height=42,
-            corner_radius=11, fg_color=T["stop_bg"], hover_color=T["stop_hover"],
-            text_color=T["stop_text"], font=ctk.CTkFont(size=14, weight="bold"))
-        self.btn_stop.pack(side="left")
-
-        prog = ctk.CTkFrame(ctrl, fg_color="transparent")
-        prog.pack(side="left", fill="x", expand=True, padx=(10, 18), pady=12)
-        top = ctk.CTkFrame(prog, fg_color="transparent")
-        top.pack(fill="x")
-        self.phase_label = ctk.CTkLabel(top, text="", text_color=T["navy"], anchor="w",
-                                        font=ctk.CTkFont(size=14, weight="bold"))
+        # stato: fase · dettagli · percentuale + barra sottile
+        status = ctk.CTkFrame(tool, fg_color="transparent")
+        status.pack(fill="x", padx=12)
+        self.phase_label = ctk.CTkLabel(status, text="", text_color=T["navy"], anchor="w",
+                                        font=font(12, True), height=20)
         self.phase_label.pack(side="left")
-        self.percent_label = ctk.CTkLabel(top, text="", text_color=T["blue"], anchor="e",
-                                          font=ctk.CTkFont(size=20, weight="bold"))
+        self.detail_label = ctk.CTkLabel(status, text="", text_color=T["subtle"], anchor="w",
+                                         font=font(11), height=20)
+        self.detail_label.pack(side="left", padx=(12, 0))
+        self.percent_label = ctk.CTkLabel(status, text="", text_color=T["blue"], anchor="e",
+                                          font=font(12, True), height=20)
         self.percent_label.pack(side="right")
-        self.progress = ctk.CTkProgressBar(prog, height=10, corner_radius=5,
-                                           progress_color=T["blue"], fg_color=T["secondary"])
+        self.progress = ctk.CTkProgressBar(tool, height=4, corner_radius=2,
+                                           progress_color=T["blue"], fg_color=T["divider"])
         self.progress.set(0)
-        self.progress.pack(fill="x", pady=(2, 4))
-        self.detail_label = ctk.CTkLabel(prog, text="", text_color=T["subtle"], anchor="w",
-                                         font=ctk.CTkFont(size=12))
-        self.detail_label.pack(fill="x")
+        self.progress.pack(fill="x", padx=12, pady=(2, 10))
 
         # ---- Piede (prima della tabella, cosi' resta sempre visibile) ---
         foot = ctk.CTkFrame(body, fg_color="transparent")
-        foot.pack(side="bottom", fill="x", pady=14)
+        foot.pack(side="bottom", fill="x", pady=10)
         self.legend = ctk.CTkFrame(foot, fg_color="transparent")
         self.legend.pack(side="left")
-        self.btn_rename = ctk.CTkButton(
-            foot, text=self.tr("rename"), command=self.start_rename, width=200, height=46,
-            corner_radius=12, font=ctk.CTkFont(size=16, weight="bold"),
-            fg_color=T["navy"], hover_color=T["navy_hover"], text_color_disabled="#FFFFFF")
+        self.btn_rename = primary_button(foot, self.tr("rename"), self.start_rename,
+                                         width=170, height=38)
+        self.btn_rename.configure(font=font(14, True))
         self.btn_rename.pack(side="right")
-        self.count_label = ctk.CTkLabel(foot, text="", text_color=T["text"],
-                                        font=ctk.CTkFont(size=13))
-        self.count_label.pack(side="right", padx=16)
+        self.count_label = ctk.CTkLabel(foot, text="", text_color=T["text"], font=font(12))
+        self.count_label.pack(side="right", padx=14)
+        self.btn_restore = LinkButton(foot, "", self.restore_excluded, bg=T["bg_app"],
+                                      text_color=T["blue"])
+        self.del_hint = ctk.CTkLabel(foot, text=self.tr("del_hint"), text_color=T["subtle"],
+                                     font=font(11))
+        self.del_hint.pack(side="right", padx=(0, 6))
 
-        # ---- Schede + tabella -----------------------------------------
-        self.table_card = ctk.CTkFrame(body, fg_color=T["card"], corner_radius=16,
-                                       border_width=1, border_color=T["border"])
-        self.table_card.pack(fill="both", expand=True)
-        tabbar = ctk.CTkFrame(self.table_card, fg_color="transparent")
-        tabbar.pack(fill="x", padx=18, pady=(10, 0))
+        # ---- Schede + opzioni + tabella --------------------------------
+        self.table_card = self._card(body, fill="both", expand=True, pady=(10, 0))
+        tabbar = ctk.CTkFrame(self.table_card, fg_color="transparent", height=38)
+        tabbar.pack(fill="x", padx=14, pady=(6, 0))
         self.tab_widgets = {}
         for key, label in ((self.TAB_DATE, self.tr("tab_date")),
                            (self.TAB_WA, self.tr("tab_wa"))):
             holder = ctk.CTkFrame(tabbar, fg_color="transparent")
-            holder.pack(side="left", padx=(0, 26))
-            lbl = ctk.CTkLabel(holder, text=label, cursor="hand2",
-                               font=ctk.CTkFont(size=15, weight="bold"))
-            lbl.pack(padx=2, pady=(4, 4))
-            line = ctk.CTkFrame(holder, height=3, corner_radius=2, fg_color=T["card"])
+            holder.pack(side="left", padx=(0, 22))
+            lbl = ctk.CTkLabel(holder, text=label, cursor="hand2", font=font(13, True),
+                               height=26)
+            lbl.pack(padx=2, pady=(2, 2))
+            line = ctk.CTkFrame(holder, height=3, corner_radius=0, fg_color=T["card"])
             line.pack(fill="x")
             lbl.bind("<Button-1>", lambda e, k=key: self._show_tab(k))
             lbl.bind("<Enter>", lambda e, k=key: self._tab_hover(k, True))
             lbl.bind("<Leave>", lambda e, k=key: self._tab_hover(k, False))
             self.tab_widgets[key] = (lbl, line)
-        self.tab_sep = ctk.CTkFrame(self.table_card, fg_color=T["border"], height=1,
-                                    corner_radius=0)
-        self.tab_sep.pack(fill="x", padx=14)
+        ctk.CTkFrame(self.table_card, fg_color=T["divider"], height=1,
+                     corner_radius=0).pack(fill="x", padx=1)
 
         # opzioni WhatsApp (visibili solo nella relativa scheda)
-        self.wa_opts = ctk.CTkFrame(self.table_card, fg_color=T["accent_soft"], corner_radius=10)
-        opts_row = ctk.CTkFrame(self.wa_opts, fg_color="transparent")
-        opts_row.pack(fill="x", padx=12, pady=(10, 2))
+        self.wa_opts = ctk.CTkFrame(self.table_card, fg_color="transparent", height=42)
+        self.wa_opts.pack_propagate(False)
+        self.wa_example = ctk.CTkLabel(self.wa_opts, text="", anchor="e",
+                                       text_color=T["subtle"], font=font(12))
+        self.wa_example.pack(side="right", padx=(10, 0))
         for var, key in ((self.wa_strip_prefix, "wa_prefix"),
                          (self.wa_format_date, "wa_date"),
                          (self.wa_strip_counter, "wa_counter")):
             ctk.CTkCheckBox(
-                opts_row, text=self.tr(key), variable=var, command=self._on_wa_option,
-                corner_radius=6, border_width=2, checkbox_width=20, checkbox_height=20,
+                self.wa_opts, text=self.tr(key), variable=var, command=self._on_wa_option,
+                corner_radius=4, border_width=2, checkbox_width=18, checkbox_height=18,
                 fg_color=T["navy"], hover_color=T["navy_hover"], border_color=T["blue"],
-                text_color=T["text"], font=ctk.CTkFont(size=13),
-            ).pack(side="left", padx=(0, 24))
-        self.wa_example = ctk.CTkLabel(self.wa_opts, text="", anchor="w",
-                                       text_color=T["subtle"], font=ctk.CTkFont(size=12))
-        self.wa_example.pack(fill="x", padx=14, pady=(0, 8))
+                text_color=T["text"], font=font(12),
+            ).pack(side="left", padx=(0, 20))
+
+        # formato del nome (visibile solo nella scheda "Rinomina per data")
+        self.date_opts = ctk.CTkFrame(self.table_card, fg_color="transparent", height=42)
+        self.date_opts.pack_propagate(False)
+        self.fmt_example = ctk.CTkLabel(self.date_opts, text="", anchor="e",
+                                        text_color=T["subtle"], font=font(12))
+        self.fmt_example.pack(side="right", padx=(10, 0))
+        self.fmt_menus = {}
+        for part, width in (("date", 128), ("time", 128), ("sep", 150)):
+            ctk.CTkLabel(self.date_opts, text=self.tr(f"fmt_{part}"), text_color=T["navy"],
+                         font=font(12, True)).pack(side="left", padx=(0, 6))
+            menu = ctk.CTkOptionMenu(
+                self.date_opts, values=[lbl for _k, lbl in self.fmt_labels(part)],
+                width=width, height=28, corner_radius=R_BTN, fg_color=T["secondary"],
+                button_color=T["blue"], button_hover_color=T["blue_hover"],
+                text_color=T["text"], text_color_disabled=T["subtle"],
+                dropdown_fg_color=T["card"], dropdown_hover_color=T["accent_soft"],
+                dropdown_text_color=T["text"], font=font(12), dropdown_font=font(12),
+                command=lambda value, p=part: self._on_fmt_menu(p, value))
+            menu.pack(side="left", padx=(0, 16))
+            self.fmt_menus[part] = menu
+        self.btn_fmt_reset = secondary_button(self.date_opts, self.tr("fmt_reset"),
+                                              self._on_fmt_reset, width=100, height=28)
+        self.btn_fmt_reset.configure(font=font(12))
+        self.btn_fmt_reset.pack(side="left")
+
+        self.opts_sep = ctk.CTkFrame(self.table_card, fg_color=T["divider"], height=1,
+                                     corner_radius=0)
 
         self._style_treeview()
         date_heads = {"cartella": self.tr("col_folder"), "nome": self.tr("col_name"),
                       "ext": self.tr("col_ext"), "exif": self.tr("col_exif"),
                       "modifica": self.tr("col_mtime")}
         self.date_frame, self.date_tree = self._make_table(
-            self.DATE_COLS, date_heads,
-            widths={"cartella": 150, "nome": 320, "ext": 60, "exif": 230, "modifica": 230})
+            self.TAB_DATE, self.DATE_COLS, date_heads,
+            widths={"cartella": 170, "nome": 330, "ext": 56, "exif": 250, "modifica": 250})
         wa_heads = {"prima": self.tr("col_before"), "dopo": self.tr("col_after")}
         self.wa_frame, self.wa_tree = self._make_table(
-            self.WA_COLS, wa_heads, widths={"prima": 480, "dopo": 480})
+            self.TAB_WA, self.WA_COLS, wa_heads, widths={"prima": 520, "dopo": 520})
+        self.heads = {self.TAB_DATE: date_heads, self.TAB_WA: wa_heads}
         self.date_tree.bind("<Double-1>", self._on_double_click_date)
         self.wa_tree.bind("<Double-1>", self._on_double_click_wa)
+
+        self.menu = tk.Menu(self, tearoff=0, bg=T["card"], fg=T["text"],
+                            activebackground=T["select_bg"], activeforeground=T["text"],
+                            font=(FONT, 10), bd=1, relief="solid")
+        self._sync_fmt_menus()
 
     def _style_lang_seg(self):
         # testo scuro sul pulsante non selezionato, bianco su quello selezionato
@@ -4070,19 +4921,19 @@ class EXIName(*_BASES):
     def _style_treeview(self):
         style = ttk.Style()
         style.theme_use("clam")
-        style.configure("EX.Treeview", rowheight=32, borderwidth=0, relief="flat",
-                        font=(FONT, 11), background=T["card"], fieldbackground=T["card"],
+        style.configure("EX.Treeview", rowheight=26, borderwidth=0, relief="flat",
+                        font=(FONT, 10), background=T["card"], fieldbackground=T["card"],
                         foreground=T["text"])
         style.map("EX.Treeview", background=[("selected", T["select_bg"])],
                   foreground=[("selected", T["text"])])
-        style.configure("EX.Treeview.Heading", font=(FONT, 10, "bold"), borderwidth=0,
+        style.configure("EX.Treeview.Heading", font=(FONT, 9, "bold"), borderwidth=0,
                         relief="flat", background=T["heading"], foreground=T["navy"],
-                        padding=(8, 7))
+                        padding=(8, 5))
         style.map("EX.Treeview.Heading", background=[("active", T["secondary_hover"])],
                   foreground=[("active", T["navy"])])
         style.layout("EX.Treeview", [("Treeview.treearea", {"sticky": "nswe"})])
 
-    def _make_table(self, cols, heads, widths):
+    def _make_table(self, which, cols, heads, widths):
         frame = ctk.CTkFrame(self.table_card, fg_color="transparent")
         frame.grid_rowconfigure(0, weight=1)
         frame.grid_columnconfigure(0, weight=1)
@@ -4090,34 +4941,41 @@ class EXIName(*_BASES):
                             style="EX.Treeview", selectmode="extended")
         for c in cols:
             tree.heading(c, text=heads[c], anchor="w",
-                         command=lambda c=c, t=tree, h=heads: self.sort_by_column(t, c, h))
+                         command=lambda c=c, w=which: self.sort_by_column(w, c))
             tree.column(c, width=widths[c], anchor="center" if c == "ext" else "w",
                         stretch=c not in ("ext",))
-        vsb = ctk.CTkScrollbar(frame, orientation="vertical", command=tree.yview,
+        vsb = ctk.CTkScrollbar(frame, orientation="vertical", command=tree.yview, width=12,
                                button_color=T["border"], button_hover_color=T["drop_border"])
         tree.configure(yscrollcommand=vsb.set)
-        tree.grid(row=0, column=0, sticky="nsew", padx=(12, 0), pady=10)
-        vsb.grid(row=0, column=1, sticky="ns", padx=(0, 6), pady=10)
+        tree.grid(row=0, column=0, sticky="nsew", padx=(1, 0), pady=(0, 1))
+        vsb.grid(row=0, column=1, sticky="ns", padx=(2, 3), pady=4)
         tree.tag_configure("odd", background=T["card"])
         tree.tag_configure("even", background=T["row_alt"])
         tree.tag_configure("match", foreground=T["match"])
         tree.tag_configure("manual", foreground=T["manual"])
+        tree.tag_configure("shift", foreground=T["shift"])
         tree.tag_configure("conflict", foreground=T["conflict"])
+        # Canc / Ctrl+A / menu del tasto destro
+        tree.bind("<Delete>", lambda e, w=which: self.exclude_selected(w))
+        tree.bind("<KP_Delete>", lambda e, w=which: self.exclude_selected(w))
+        tree.bind("<Control-a>", lambda e, t=tree: self._select_all(t))
+        tree.bind("<Control-A>", lambda e, t=tree: self._select_all(t))
+        tree.bind("<Button-3>", lambda e, w=which: self._context_menu(w, e))
+        tree.bind("<Button-1>", lambda e, t=tree: t.focus_set(), add="+")
         return frame, tree
 
     def _build_legend(self):
         for w in self.legend.winfo_children():
             w.destroy()
-        items = [(T["conflict"], self.tr("leg_conflict"))]
+        items = [(T["match"], self.tr("leg_match"))]
         if self.active_tab == self.TAB_DATE:
-            items = [(T["match"], self.tr("leg_match")), (T["manual"], self.tr("leg_manual"))] + items
-        else:
-            items = [(T["match"], self.tr("leg_match"))] + items
+            items += [(T["shift"], self.tr("leg_shift")), (T["manual"], self.tr("leg_manual"))]
+        items.append((T["conflict"], self.tr("leg_conflict")))
         for color, label in items:
             ctk.CTkLabel(self.legend, text="●", text_color=color,
-                         font=ctk.CTkFont(size=15)).pack(side="left", padx=(0, 5))
+                         font=font(13)).pack(side="left", padx=(0, 4))
             ctk.CTkLabel(self.legend, text=label, text_color=T["subtle"],
-                         font=ctk.CTkFont(size=12)).pack(side="left", padx=(0, 18))
+                         font=font(11)).pack(side="left", padx=(0, 14))
 
     def _after_rebuild(self):
         """Riporta dati e stato nella UI (all'avvio e dopo il cambio lingua)."""
@@ -4141,7 +4999,6 @@ class EXIName(*_BASES):
         for w in self.winfo_children():
             if not isinstance(w, tk.Toplevel):
                 w.destroy()
-        self.sort_state = {}
         self._build_ui()
         self._after_rebuild()
 
@@ -4157,15 +5014,17 @@ class EXIName(*_BASES):
             on = k == key
             lbl.configure(text_color=T["navy"] if on else T["subtle"])
             line.configure(fg_color=T["blue"] if on else T["card"])
-        self.date_frame.pack_forget()
-        self.wa_frame.pack_forget()
-        self.wa_opts.pack_forget()
+        for w in (self.date_frame, self.wa_frame, self.wa_opts, self.date_opts, self.opts_sep):
+            w.pack_forget()
+        opts, frame = (self.date_opts, self.date_frame) if key == self.TAB_DATE \
+            else (self.wa_opts, self.wa_frame)
+        opts.pack(fill="x", padx=16)
+        self.opts_sep.pack(fill="x", padx=1)
+        frame.pack(fill="both", expand=True)
         if key == self.TAB_DATE:
-            self.date_frame.pack(fill="both", expand=True)
+            self._sync_fmt_menus()
         else:
-            self.wa_opts.pack(fill="x", padx=14, pady=(10, 0))
             self._update_wa_example()
-            self.wa_frame.pack(fill="both", expand=True)
         self._build_legend()
         self._update_footer()
 
@@ -4248,6 +5107,8 @@ class EXIName(*_BASES):
         self.sources = [p for p in self.sources if p != path]
         self.date_rows = [r for r in self.date_rows if r["src"] != path]
         self.wa_rows = [r for r in self.wa_rows if r["src"] != path]
+        self.date_excluded = [r for r in self.date_excluded if r["src"] != path]
+        self.wa_excluded = [r for r in self.wa_excluded if r["src"] != path]
         if not self.sources:
             self.final = None
         self._refresh_sources()
@@ -4266,6 +5127,7 @@ class EXIName(*_BASES):
 
     def _clear_results(self):
         self.date_rows, self.wa_rows = [], []
+        self.date_excluded, self.wa_excluded = [], []
         self.dir_cache = {}
         self.final = None
         self._recompute_date()
@@ -4273,24 +5135,77 @@ class EXIName(*_BASES):
         self._render_idle()
 
     def _refresh_sources(self):
-        for w in self.src_list.winfo_children():
+        for w in self.chips:
             w.destroy()
+        if self.chip_more is not None:
+            self.chip_more.destroy()
+            self.chip_more = None
+        self.chips = []
+        self._n_sub = count_subfolders(self.sources) if self.sources else 0
+        self._update_sub_count()
         if not self.sources:
-            self.src_list.pack_forget()
+            self.chip_row.pack_forget()
             self.drop_hint.pack(expand=True, fill="both")
             return
         self.drop_hint.pack_forget()
-        self.src_list.pack(fill="both", expand=True, padx=6, pady=6)
+        self.chip_row.pack(fill="both", expand=True, padx=4, pady=3)
         for p in self.sources:
-            row = ctk.CTkFrame(self.src_list, fg_color=T["card"], corner_radius=8)
-            row.pack(fill="x", pady=2)
+            chip = ctk.CTkFrame(self.chip_row, fg_color=T["card"], corner_radius=R_BTN,
+                                border_width=1, border_color=T["border"], height=28)
             icon = "📁" if p.is_dir() else "🖼"
-            ctk.CTkLabel(row, text=f"{icon}  {p}", anchor="w", text_color=T["text"],
-                         font=ctk.CTkFont(size=12)).pack(side="left", padx=10, pady=3)
-            ctk.CTkButton(row, text="✕", width=26, height=22, corner_radius=6,
+            lbl = ctk.CTkLabel(chip, text=f"{icon} {p.name or p}", text_color=T["text"],
+                               font=font(12), height=24)
+            lbl.pack(side="left", padx=(8, 2))
+            Tooltip(lbl, str(p))
+            ctk.CTkButton(chip, text="✕", width=20, height=20, corner_radius=4,
                           fg_color="transparent", hover_color=T["stop_bg"],
-                          text_color=T["subtle"],
-                          command=lambda p=p: self.remove_source(p)).pack(side="right", padx=6)
+                          text_color=T["subtle"], font=font(11),
+                          command=lambda p=p: self.remove_source(p)).pack(side="left",
+                                                                          padx=(0, 4))
+            self.chips.append(chip)
+        self.chip_more = ctk.CTkLabel(self.chip_row, text="", text_color=T["blue"],
+                                      font=font(12, True))
+        self.after_idle(self._layout_chips)
+
+    def _layout_chips(self):
+        """Mostra le cartelle in una riga; quelle che non ci stanno diventano '+N altre'."""
+        if not self.chips:
+            return
+        try:
+            avail = self.chip_row.winfo_width()
+            if avail < 50:
+                return
+            for c in self.chips:
+                c.pack_forget()
+            self.chip_more.pack_forget()
+            used, shown = 0, 0
+            reserve = 90
+            for i, c in enumerate(self.chips):
+                w = c.winfo_reqwidth() + 6
+                last = i == len(self.chips) - 1
+                if used + w > avail - (0 if last else reserve):
+                    break
+                c.pack(side="left", padx=(0, 6))
+                used += w
+                shown += 1
+            hidden = len(self.chips) - shown
+            if hidden:
+                self.chip_more.configure(text=self.tr("sources_more", n=hidden))
+                self.chip_more.pack(side="left", padx=4)
+        except Exception:
+            pass
+
+    def _update_sub_count(self):
+        if not hasattr(self, "sub_count"):
+            return
+        n = self._n_sub
+        text = "" if not n else (self.tr("subfolders_1") if n == 1
+                                 else self.tr("subfolders_n", n=self.fmt_int(n)))
+        self.sub_count.configure(text=text)
+
+    def _on_subfolders(self):
+        self.settings["include_subfolders"] = bool(self.recursive_var.get())
+        save_settings(self.settings)
 
     # ------------------------------------------------------------ comandi
     def _set_btn(self, btn, enabled, fg, hover=None):
@@ -4316,8 +5231,10 @@ class EXIName(*_BASES):
         self.btn_add.configure(state="normal" if idle else "disabled",
                                fg_color=T["blue"] if idle else T["disabled"])
         self.btn_clear.configure(state="normal" if idle and self.sources else "disabled")
+        self.chk_sub.configure(state="normal" if idle else "disabled")
         self.lang_seg.configure(state="normal" if idle else "disabled")
         self._style_lang_seg()
+        self._sync_fmt_menus()
         self._update_footer()
 
     # ------------------------------------------------------------ tempi
@@ -4375,7 +5292,7 @@ class EXIName(*_BASES):
                                      t=fmt_duration(phase_el * (1 - frac) / frac)))
             else:
                 parts.append(self.tr("estimating"))
-        self.detail_label.configure(text="   ·   ".join(parts))
+        self.detail_label.configure(text="  ·  ".join(parts))
 
     def _render_idle(self):
         if not hasattr(self, "phase_label"):
@@ -4403,23 +5320,10 @@ class EXIName(*_BASES):
     def start_scan(self):
         if self.mode != "idle" or not self.sources:
             return
-        n_sub = count_subfolders(self.sources)
-        recursive = False
-        if n_sub:
-            dlg = ChoiceDialog(
-                self, self.tr("sub_title"),
-                [self.tr("sub_msg_1") if n_sub == 1 else
-                 self.tr("sub_msg_n", n=self.fmt_int(n_sub)), self.tr("sub_question")],
-                [(self.tr("sub_yes"), "yes", True), (self.tr("sub_no"), "no", False),
-                 (self.tr("cancel"), None, False)],
-                width=520)
-            self.wait_window(dlg)
-            if dlg.result is None:
-                return
-            recursive = dlg.result == "yes"
-        self.recursive = recursive
+        recursive = bool(self.recursive_var.get())
 
         self.date_rows, self.wa_rows = [], []
+        self.date_excluded, self.wa_excluded = [], []
         self.dir_cache = {}
         self.final = None
         self._recompute_date()
@@ -4518,20 +5422,106 @@ class EXIName(*_BASES):
             rel = Path(".")
         return row["root"].name if str(rel) == "." else f"{row['root'].name}{os.sep}{rel}"
 
-    def sort_by_column(self, tree, col, heads):
-        key = (str(tree), col)
-        ascending = self.sort_state.get(key, True)
-        self.sort_state[key] = not ascending
-        items = list(tree.get_children(""))
-        items.sort(key=lambda i: natural_key(tree.set(i, col)), reverse=not ascending)
-        for index, item in enumerate(items):
-            tree.move(item, "", index)
-            tags = [t for t in tree.item(item, "tags") if t not in ("odd", "even")]
-            tags.append("even" if index % 2 == 0 else "odd")
-            tree.item(item, tags=tuple(tags))
+    def _tree(self, which):
+        return self.date_tree if which == self.TAB_DATE else self.wa_tree
+
+    def sort_by_column(self, which, col):
+        prev = self.sort_active.get(which)
+        ascending = not prev[1] if prev and prev[0] == col else True
+        self.sort_active[which] = (col, ascending)
+        self._apply_sort(which)
+
+    def _apply_sort(self, which):
+        tree = self._tree(which)
+        state = self.sort_active.get(which)
+        heads = self.heads[which]
+        if state:
+            col, ascending = state
+            items = list(tree.get_children(""))
+            items.sort(key=lambda i: natural_key(tree.set(i, col)), reverse=not ascending)
+            for index, item in enumerate(items):
+                tree.move(item, "", index)
+                tags = [t for t in tree.item(item, "tags") if t not in ("odd", "even")]
+                tags.append("even" if index % 2 == 0 else "odd")
+                tree.item(item, tags=tuple(tags))
         for c, base in heads.items():
-            arrow = ("  ▲" if ascending else "  ▼") if c == col else ""
+            arrow = ("  ▲" if state[1] else "  ▼") if state and c == state[0] else ""
             tree.heading(c, text=base + arrow)
+
+    def _select_all(self, tree):
+        tree.selection_set(tree.get_children())
+        return "break"
+
+    def _select_index(self, tree, index):
+        children = tree.get_children()
+        if not children:
+            return
+        item = children[min(max(index, 0), len(children) - 1)]
+        tree.selection_set(item)
+        tree.focus(item)
+        tree.see(item)
+        tree.focus_set()
+
+    def _context_menu(self, which, event):
+        tree = self._tree(which)
+        item = tree.identify_row(event.y)
+        if not item:
+            return
+        if item not in tree.selection():
+            tree.selection_set(item)
+        tree.focus(item)
+        items = self.date_items if which == self.TAB_DATE else self.wa_items
+        row = items.get(item)
+        self.menu.delete(0, "end")
+        idle = self.mode == "idle"
+        self.menu.add_command(label=self.tr("menu_exclude"),
+                              command=lambda: self.exclude_selected(which),
+                              state="normal" if idle else "disabled")
+        self.menu.add_command(label=self.tr("menu_select_all"),
+                              command=lambda: self._select_all(tree))
+        self.menu.add_separator()
+        self.menu.add_command(label=self.tr("menu_open"),
+                              command=lambda: row and self._open(row["path"]))
+        try:
+            self.menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.menu.grab_release()
+
+    # ------------------------------------------------------------ esclusioni (Canc)
+    def exclude_selected(self, which):
+        """Toglie dall'elenco (e quindi dalla rinomina) le righe selezionate."""
+        if self.mode != "idle":
+            return "break"
+        tree = self._tree(which)
+        sel = tree.selection()
+        items = self.date_items if which == self.TAB_DATE else self.wa_items
+        rows = [items[i] for i in sel if i in items]
+        if not rows:
+            return "break"
+        first = min(tree.index(i) for i in sel)
+        ids = {id(r) for r in rows}
+        if which == self.TAB_DATE:
+            self.date_rows = [r for r in self.date_rows if id(r) not in ids]
+            self.date_excluded.extend(rows)
+            self._recompute_date()
+        else:
+            self.wa_rows = [r for r in self.wa_rows if id(r) not in ids]
+            self.wa_excluded.extend(rows)
+            self._recompute_wa()
+        self._select_index(tree, first)
+        return "break"
+
+    def restore_excluded(self):
+        if self.mode != "idle":
+            return
+        if self.active_tab == self.TAB_DATE:
+            self.date_rows += self.date_excluded
+            self.date_excluded = []
+            self._recompute_date()
+        else:
+            self.wa_rows += self.wa_excluded
+            self.wa_excluded = []
+            self._recompute_wa()
 
     # ------------------------------------------------------------ scheda: data
     def _active_dt(self, row):
@@ -4539,8 +5529,61 @@ class EXIName(*_BASES):
             return row["manual_dt"]
         return row["exif_dt"] if row["has_exif"] else row["mtime_dt"]
 
+    # ---- formato del nome
+    def _sync_fmt_menus(self):
+        """Menu, esempio e pulsante 'predefinito' allineati al formato salvato."""
+        if not hasattr(self, "fmt_menus"):
+            return
+        for part, menu in self.fmt_menus.items():
+            menu.set(self.fmt_label(part, self.name_fmt[part]))
+        idle = self.mode == "idle"
+        no_time = self.name_fmt["time"] == "none"
+        self.fmt_menus["date"].configure(state="normal" if idle else "disabled")
+        self.fmt_menus["time"].configure(state="normal" if idle else "disabled")
+        self.fmt_menus["sep"].configure(state="normal" if idle and not no_time else "disabled")
+        is_default = self.name_fmt == DEFAULT_NAME_FORMAT
+        self.btn_fmt_reset.configure(state="normal" if idle and not is_default else "disabled")
+        sample = FORMAT_SAMPLE_DT.strftime(self.date_format()) + ".jpg"
+        self.fmt_example.configure(
+            text=self.tr("fmt_example_def" if is_default else "fmt_example", b=sample))
+
+    def _on_fmt_menu(self, part, label):
+        key = next((k for k, lbl in self.fmt_labels(part) if lbl == label), None)
+        if key is None or key == self.name_fmt[part]:
+            return
+        new = dict(self.name_fmt)
+        new[part] = key
+        self._ask_fmt_change(new)
+
+    def _on_fmt_reset(self):
+        if self.name_fmt != DEFAULT_NAME_FORMAT:
+            self._ask_fmt_change(dict(DEFAULT_NAME_FORMAT))
+
+    def _ask_fmt_change(self, new):
+        """Ogni variazione del formato va confermata; se confermata viene salvata."""
+        if self.mode != "idle":
+            self._sync_fmt_menus()
+            messagebox.showinfo(APP_TITLE, self.tr("fmt_busy"))
+            return
+        old_s = FORMAT_SAMPLE_DT.strftime(self.date_format()) + ".jpg"
+        new_s = FORMAT_SAMPLE_DT.strftime(name_strftime(new)) + ".jpg"
+        dlg = ChoiceDialog(
+            self, self.tr("fmt_title"),
+            [self.tr("fmt_question"), self.tr("fmt_from_to", a=old_s, b=new_s),
+             self.tr("fmt_remember")],
+            [(self.tr("fmt_yes"), True, True), (self.tr("cancel"), None, False)],
+            width=500, height=235)
+        self.wait_window(dlg)
+        if dlg.result:
+            self.name_fmt = new
+            self.settings["name_format"] = dict(new)
+            save_settings(self.settings)
+            self._recompute_date()
+        self._sync_fmt_menus()
+
     def _recompute_date(self):
-        self.date_names = build_unique_names(self.date_rows, self._active_dt)
+        self.date_names = build_unique_names(self.date_rows, self._active_dt,
+                                             self.date_format(), self.dir_cache)
         self.date_conflicts = find_conflicts(self.date_rows, self.date_names, self.dir_cache)
         self._populate_date()
 
@@ -4548,6 +5591,7 @@ class EXIName(*_BASES):
         tree = self.date_tree
         tree.delete(*tree.get_children())
         self.date_items.clear()
+        fmt = self.date_format()
         rows = sorted(self.date_rows,
                       key=lambda r: (natural_key(str(r["path"].parent)), natural_key(r["path"].name)))
         for i, row in enumerate(rows):
@@ -4559,11 +5603,15 @@ class EXIName(*_BASES):
                 tags.append("conflict")
             elif row["manual_dt"] is not None:
                 tags.append("manual")
+            elif new != self._active_dt(row).strftime(fmt) + row["ext"]:
+                tags.append("shift")
             item = tree.insert("", "end", tags=tuple(tags), values=(
                 self._folder_label(row), row["path"].name, row["ext"].lstrip(".").upper(),
                 new if row["has_exif"] else "", "" if row["has_exif"] else new,
             ))
             self.date_items[item] = row
+        if hasattr(self, "heads"):
+            self._apply_sort(self.TAB_DATE)
         self._update_footer()
 
     def _on_double_click_date(self, event):
@@ -4619,6 +5667,8 @@ class EXIName(*_BASES):
                 tags.append("conflict")
             item = tree.insert("", "end", tags=tuple(tags), values=(row["path"].name, new))
             self.wa_items[item] = row
+        if hasattr(self, "heads"):
+            self._apply_sort(self.TAB_WA)
         self._update_footer()
 
     def _on_double_click_wa(self, event):
@@ -4639,6 +5689,9 @@ class EXIName(*_BASES):
         return [(r["path"], names[id(r)]) for r in rows
                 if names.get(id(r)) not in (None, r["path"].name) and id(r) not in conflicts]
 
+    def _excluded(self):
+        return self.date_excluded if self.active_tab == self.TAB_DATE else self.wa_excluded
+
     def _update_footer(self):
         if not hasattr(self, "btn_rename"):
             return
@@ -4648,9 +5701,11 @@ class EXIName(*_BASES):
             n_conf = len(self.date_conflicts)
             text = (self.plural("cnt_img", n_img) + " · " + self.plural("cnt_vid", n_vid)) \
                 if self.date_rows else ""
+            has_rows = bool(self.date_rows)
         else:
             n_conf = len(self.wa_conflicts)
             text = self.tr("cnt_wa", n=self.fmt_int(len(self.wa_rows))) if self.wa_rows else ""
+            has_rows = bool(self.wa_rows)
         idle = self.mode == "idle"
         pending = len(self._pending()) if idle else 0
         if text:
@@ -4659,6 +5714,17 @@ class EXIName(*_BASES):
                 text += self.tr("cnt_conflict", n=self.fmt_int(n_conf))
         self.count_label.configure(text=text)
         self._set_btn(self.btn_rename, bool(pending) and idle, T["navy"], T["navy_hover"])
+
+        # suggerimento Canc + "Ripristina esclusi"
+        n_ex = len(self._excluded())
+        self.btn_restore.pack_forget()
+        self.del_hint.pack_forget()
+        if n_ex:
+            self.btn_restore.configure(text=self.tr("restore", n=self.fmt_int(n_ex)),
+                                       state="normal" if idle else "disabled")
+            self.btn_restore.pack(side="right", padx=(0, 4))
+        if has_rows:
+            self.del_hint.pack(side="right", padx=(0, 8))
 
     def _open(self, path):
         try:
@@ -4680,6 +5746,9 @@ class EXIName(*_BASES):
                       w=self.tr("folder_1" if n_dirs == 1 else "folder_n"))
         if conf:
             msg += "\n\n" + self.tr("ren_conflicts", n=self.fmt_int(conf))
+        n_ex = len(self._excluded())
+        if n_ex:
+            msg += "\n\n" + self.tr("ren_excluded", n=self.fmt_int(n_ex))
         if not messagebox.askyesno(APP_TITLE, msg + "\n\n" + self.tr("ren_proceed")):
             return
         self.mode = "renaming"
